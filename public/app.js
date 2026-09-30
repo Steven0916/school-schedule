@@ -127,6 +127,7 @@ async function load(initial = false) {
     state.events = events.sort(byDate);
     state.trash = trash;
     state.refreshError = '';
+    auditRefresh();
     state.lastUpdated = new Date().toLocaleTimeString('zh-TW', {
       hour: '2-digit',
       minute: '2-digit',
@@ -910,6 +911,63 @@ function mountSchoolAccess() {
     .catch((err) => setMsg(err.message || '載入失敗'));
 }
 
+// ---------- 操作紀錄（管理者） ----------
+
+function mountAuditLog() {
+  const section = $('audit-section');
+  const count = h('span', {}, '');
+  let listEl = h('div', { className: 'trash-empty' }, '展開後載入…');
+  const details = h(
+    'details',
+    {},
+    h('summary', {}, '操作紀錄 ', count),
+    h('p', {}, '記錄新增、編輯、完成、刪除、復原期程與帳號變更，顯示最近 200 筆。'),
+    listEl
+  );
+
+  async function refresh() {
+    try {
+      const rows = await api('/api/admin/audit');
+      count.textContent = `${rows.length} 筆`;
+      const when = (iso) =>
+        new Date(iso).toLocaleString('zh-TW', {
+          timeZone: 'Asia/Taipei',
+          hour12: false,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      listEl.replaceWith(
+        (listEl = rows.length
+          ? h(
+              'div',
+              { className: 'list' },
+              rows.map((r) =>
+                h(
+                  'div',
+                  { className: 'trash-row' },
+                  h('div', {}, h('strong', {}, `${r.action}${r.detail ? `：${r.detail}` : ''}`), h('span', {}, `${when(r.at)} · ${r.actor}`))
+                )
+              )
+            )
+          : h('div', { className: 'trash-empty' }, '目前沒有紀錄。'))
+      );
+    } catch (err) {
+      count.textContent = '';
+      listEl.textContent = err.message;
+    }
+  }
+
+  details.addEventListener('toggle', () => details.open && refresh());
+  auditRefresh = () => details.open && refresh();
+  section.replaceChildren(details);
+  section.hidden = false;
+}
+
+let auditRefresh = () => {};
+
 // ---------- 啟動 ----------
 
 async function init() {
@@ -926,7 +984,10 @@ async function init() {
     state.role = 'viewer';
   }
 
-  if (isOwner()) mountSchoolAccess();
+  if (isOwner()) {
+    mountSchoolAccess();
+    mountAuditLog();
+  }
   $('refresh-button').addEventListener('click', () => load());
 
   await load(true);
