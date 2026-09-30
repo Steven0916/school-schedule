@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 導入示範學校｜期程統整</title>
+  <meta name="description" content="統整會議、工作、觀課計畫與重要行事的期程。" />
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="site-shell">
+    <div class="top-rule"></div>
+    <div class="workspace">
+      <header class="header">
+        <div class="brand">
+          <div class="brand-mark" data-icon="calendar-days" data-size="22"></div>
+          <div>
+            <span class="brand-kicker">AI 導入示範學校</span>
+            <strong>期程統整</strong>
+          </div>
+        </div>
+        <span class="header-label">校務協作 · 行事管理</span>
+      </header>
+
+      <section class="intro">
+        <div>
+          <p class="eyebrow">SCHOOL SCHEDULE / 校務期程</p>
+          <h1>所有重要安排，<br class="mobile-break" />一目了然。</h1>
+          <p class="intro-copy">集中查看會議、工作、觀課計畫與重要行事。</p>
+        </div>
+        <div id="intro-actions"></div>
+      </section>
+
+      <div class="access-banner" id="access-banner"></div>
+
+      <section class="overview" id="overview" aria-label="期程統計"></section>
+
+      <div id="school-access"></div>
+
+      <section class="schedule-section">
+        <div class="section-top">
+          <div>
+            <p class="eyebrow">SCHEDULE</p>
+            <h2>期程清單 <span id="schedule-count"></span></h2>
+          </div>
+          <button class="refresh-button" id="refresh-button" aria-label="更新期程清單">更新清單<span id="last-updated"></span></button>
+        </div>
+        <div class="filters" id="filters" role="group" aria-label="依類別篩選"></div>
+        <div class="list" id="schedule-list" aria-live="polite"></div>
+      </section>
+
+      <section class="completed-section" aria-labelledby="completed-title">
+        <div class="section-top">
+          <div>
+            <p class="eyebrow">PROGRESS</p>
+            <h2 id="completed-title">已完成工作</h2>
+          </div>
+          <span class="completed-heading-icon" data-icon="circle-check-big" data-size="25"></span>
+        </div>
+        <div class="progress-block">
+          <h3>已確認完成 <span id="completed-count"></span></h3>
+          <div class="list completed-list" id="completed-list"></div>
+        </div>
+      </section>
+
+      <section class="trash-section" id="trash-section" hidden></section>
+
+      <p class="status-error" id="status-error" role="alert" hidden></p>
+
+      <footer>AI 導入示範學校 <span>／</span> 期程統整</footer>
+    </div>
+  </main>
+
+  <dialog class="modal" id="modal"></dialog>
+  <div class="notice" id="notice" role="status" hidden></div>
+</body>
+</html>

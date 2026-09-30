@@ -1,0 +1,13 @@
+{
+  "name": "school-schedule",
+  "version": "1.0.0",
+  "description": "AI 導入示範學校｜期程統整",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
