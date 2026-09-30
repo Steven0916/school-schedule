@@ -57,37 +57,96 @@ function validateUsername(username) {
   }
 }
 
-// ---------- 資料儲存（JSON 檔） ----------
+// ---------- 資料儲存 ----------
+// 有設定 DATABASE_URL 時存在 PostgreSQL（例如 Neon），否則存在 data/db.json。
+// 整份資料以單一 JSON 文件保存；每個會修改資料的請求在回應前都會先寫入完成。
 
-function saveDb() {
-  const tmp = `${DB_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
-  fs.renameSync(tmp, DB_FILE);
+function fileStorage() {
+  return {
+    label: `檔案 ${DB_FILE}`,
+    async load() {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      return fs.existsSync(DB_FILE) ? JSON.parse(fs.readFileSync(DB_FILE, 'utf8')) : null;
+    },
+    async save(json) {
+      const tmp = `${DB_FILE}.tmp`;
+      fs.writeFileSync(tmp, json);
+      fs.renameSync(tmp, DB_FILE);
+    },
+  };
 }
 
-function loadDb() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (fs.existsSync(DB_FILE)) return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+function postgresStorage(connectionString, Pool = require('pg').Pool) {
+  const pool = new Pool({ connectionString, max: 3 });
+  const ready = pool.query(
+    'CREATE TABLE IF NOT EXISTS app_state (id INTEGER PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())'
+  );
+  return {
+    label: 'PostgreSQL',
+    async load() {
+      await ready;
+      const { rows } = await pool.query('SELECT data FROM app_state WHERE id = 1');
+      return rows[0]?.data ?? null;
+    },
+    async save(json) {
+      await ready;
+      await pool.query(
+        `INSERT INTO app_state (id, data, updated_at) VALUES (1, $1::jsonb, now())
+         ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+        [json]
+      );
+    },
+  };
+}
+
+let storage;
+let db;
+let dirty = false;
+let saving = Promise.resolve();
+
+// 標記資料已變更；實際寫入由 persist() 在回應前完成。
+function saveDb() {
+  dirty = true;
+}
+
+function persist() {
+  if (!dirty) return saving;
+  dirty = false;
+  const snapshot = JSON.stringify(db, null, 2);
+  saving = saving
+    .catch(() => {})
+    .then(() => storage.save(snapshot))
+    .catch((err) => {
+      dirty = true; // 下次請求時重試
+      throw err;
+    });
+  return saving;
+}
+
+async function initDb() {
+  storage = process.env.DATABASE_URL ? postgresStorage(process.env.DATABASE_URL) : fileStorage();
+  db = await storage.load();
+  if (db) return;
 
   const password = process.env.ADMIN_PASSWORD || crypto.randomBytes(9).toString('base64url');
-  const fresh = {
+  db = {
     admin: { username: 'admin', passwordHash: hashPassword(password) },
     members: [],
     events: [],
     sessions: [],
     nextId: { member: 1, event: 1 },
   };
-  fs.writeFileSync(DB_FILE, JSON.stringify(fresh, null, 2));
+  saveDb();
+  await persist();
   console.log('================================================');
   console.log(' 已建立新的資料庫');
-  console.log(` 管理者帳號：admin`);
-  console.log(` 管理者密碼：${password}`);
+  console.log(' 管理者帳號：admin');
+  console.log(
+    process.env.ADMIN_PASSWORD ? ' 管理者密碼：環境變數 ADMIN_PASSWORD 的值' : ` 管理者密碼：${password}`
+  );
   console.log(' 請登入後於「帳號與權限」修改密碼。');
   console.log('================================================');
-  return fresh;
 }
-
-let db = loadDb();
 
 // ---------- 工具 ----------
 
@@ -531,6 +590,7 @@ async function handle(req, res) {
       match.r.keys.forEach((k, i) => (params[k] = Number(match.m[i + 1])));
       const body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? await readBody(req) : {};
       const data = await match.r.handler({ req, res, params, body, session: getSession(req) });
+      await persist();
       return sendJson(res, 200, data);
     } catch (err) {
       if (err instanceof HttpError) return sendJson(res, err.status, { error: err.message });
@@ -570,22 +630,31 @@ async function handle(req, res) {
 
 // ---------- 啟動 ----------
 
-const resetIndex = process.argv.indexOf('--reset-admin');
-if (resetIndex !== -1) {
-  const password = process.argv[resetIndex + 1];
-  try {
+async function main() {
+  await initDb();
+
+  const resetIndex = process.argv.indexOf('--reset-admin');
+  if (resetIndex !== -1) {
+    const password = process.argv[resetIndex + 1];
     validatePassword(password);
-  } catch (err) {
-    console.error(err.message);
-    process.exit(1);
+    db.admin.passwordHash = hashPassword(password);
+    db.sessions = db.sessions.filter((s) => s.role !== 'owner');
+    saveDb();
+    await persist();
+    console.log(`已重設管理者（${db.admin.username}）密碼。`);
+    process.exit(0);
   }
-  db.admin.passwordHash = hashPassword(password);
-  db.sessions = db.sessions.filter((s) => s.role !== 'owner');
-  saveDb();
-  console.log(`已重設管理者（${db.admin.username}）密碼。`);
-  process.exit(0);
+
+  http.createServer(handle).listen(PORT, () => {
+    console.log(`期程統整已啟動：http://localhost:${PORT}（資料儲存：${storage.label}）`);
+  });
 }
 
-http.createServer(handle).listen(PORT, () => {
-  console.log(`期程統整已啟動：http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err.message || err);
+    process.exit(1);
+  });
+}
+
+module.exports = { postgresStorage };
