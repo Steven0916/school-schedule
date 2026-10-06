@@ -2,6 +2,7 @@
 
 const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
 const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中'];
+const AI_MODES = ['AI備課', 'AI教學', 'AI評量', 'AI協作', 'AI創作', 'AI探究'];
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,40}$/;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_NAME = 'sid';
@@ -103,6 +104,36 @@ function normalizeEvent(body) {
   };
 }
 
+function requiredString(value, max, label) {
+  const s = optionalString(value, max, label);
+  if (!s) throw new HttpError(400, `請填寫${label}。`);
+  return s;
+}
+
+function intInRange(value, min, max, label) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min || n > max) throw new HttpError(400, `${label}需為 ${min} 到 ${max} 的整數。`);
+  return n;
+}
+
+function normalizeObservation(body) {
+  if (!isValidDate(body.date)) throw new HttpError(400, '請選擇有效的日期。');
+  const modes = Array.isArray(body.modes) ? AI_MODES.filter((m) => body.modes.includes(m)) : [];
+  if (!modes.length) throw new HttpError(400, '請至少勾選一項 AI 教學應用模式。');
+  return {
+    date: body.date,
+    subject: requiredString(body.subject, 40, '領域/科目'),
+    designer: requiredString(body.designer, 80, '設計者'),
+    grade: intInRange(body.grade, 1, 12, '年級'),
+    className: requiredString(body.className, 20, '班級'),
+    students: intInRange(body.students, 1, 200, '人數'),
+    periods: intInRange(body.periods, 1, 30, '總節數'),
+    minutes: intInRange(body.minutes, 1, 180, '每節分鐘數'),
+    unit: requiredString(body.unit, 120, '單元名稱'),
+    modes,
+  };
+}
+
 // ---------- 資料轉換 ----------
 
 function canDeleteEvent(row, session) {
@@ -126,6 +157,34 @@ function toEvent(row, session) {
     completedAt: row.completed_at || null,
     deletedAt: row.deleted_at || null,
     canDelete: canDeleteEvent(row, session),
+  };
+}
+
+// 未登入者看到的姓名：保留頭尾字，中間打碼（王小明 → 王○明、王明 → 王○）；多位設計者分別處理
+function maskName(name) {
+  return name.replace(/[^\s、,，/／&＆]+/g, (part) => {
+    const chars = Array.from(part);
+    if (chars.length === 1) return part;
+    if (chars.length === 2) return `${chars[0]}○`;
+    return chars[0] + '○'.repeat(chars.length - 2) + chars[chars.length - 1];
+  });
+}
+
+function toObservation(row, session) {
+  return {
+    id: row.id,
+    date: row.date,
+    subject: row.subject,
+    designer: session ? row.designer : maskName(row.designer),
+    grade: row.grade,
+    className: row.class_name,
+    students: row.students,
+    periods: row.periods,
+    minutes: row.minutes,
+    unit: row.unit,
+    modes: JSON.parse(row.modes || '[]'),
+    createdBySchool: row.created_by_school || null,
+    canModify: canDeleteEvent(row, session),
   };
 }
 
@@ -466,6 +525,68 @@ route('POST', '/api/events/:id/restore', async (ctx) => {
   return toEvent(row, ctx.session);
 });
 
+// 公開觀課
+async function findObservation(ctx) {
+  const row = await ctx.db
+    .prepare('SELECT * FROM observations WHERE id = ? AND deleted_at IS NULL')
+    .bind(ctx.params.id)
+    .first();
+  if (!row) throw new HttpError(404, '找不到這筆觀課資料。');
+  if (!canDeleteEvent(row, ctx.session)) throw new HttpError(403, '只能修改自己填報的資料。');
+  return row;
+}
+
+const observationLabel = (o) => `${o.subject}｜${o.unit}（${o.date}）`;
+
+route('GET', '/api/observations', async (ctx) => {
+  const { results } = await ctx.db
+    .prepare('SELECT * FROM observations WHERE deleted_at IS NULL ORDER BY date, id')
+    .all();
+  return results.map((r) => toObservation(r, ctx.session));
+});
+
+route('POST', '/api/observations', async (ctx) => {
+  requireEditor(ctx.session);
+  const o = normalizeObservation(ctx.body);
+  const school = ctx.session.role === 'school' ? ctx.session.member : null;
+  const row = await ctx.db
+    .prepare(
+      `INSERT INTO observations (date, subject, designer, grade, class_name, students, periods, minutes, unit, modes,
+         created_by_school, created_by_member_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+    )
+    .bind(o.date, o.subject, o.designer, o.grade, o.className, o.students, o.periods, o.minutes, o.unit,
+      JSON.stringify(o.modes), school?.school_name ?? null, school?.id ?? null, new Date().toISOString())
+    .first();
+  await audit(ctx, '填報公開觀課', observationLabel(o));
+  return toObservation(row, ctx.session);
+});
+
+route('PUT', '/api/observations/:id', async (ctx) => {
+  requireEditor(ctx.session);
+  const before = await findObservation(ctx);
+  const o = normalizeObservation(ctx.body);
+  const row = await ctx.db
+    .prepare(
+      `UPDATE observations SET date = ?, subject = ?, designer = ?, grade = ?, class_name = ?, students = ?,
+         periods = ?, minutes = ?, unit = ?, modes = ?, updated_at = ? WHERE id = ? RETURNING *`
+    )
+    .bind(o.date, o.subject, o.designer, o.grade, o.className, o.students, o.periods, o.minutes, o.unit,
+      JSON.stringify(o.modes), new Date().toISOString(), before.id)
+    .first();
+  await audit(ctx, '編輯公開觀課', observationLabel(o));
+  return toObservation(row, ctx.session);
+});
+
+route('DELETE', '/api/observations/:id', async (ctx) => {
+  requireEditor(ctx.session);
+  if (ctx.body.confirmation !== '確定刪除') throw new HttpError(400, '請輸入「確定刪除」。');
+  const row = await findObservation(ctx);
+  await ctx.db.prepare('UPDATE observations SET deleted_at = ? WHERE id = ?').bind(new Date().toISOString(), row.id).run();
+  await audit(ctx, '刪除公開觀課', observationLabel(row));
+  return { ok: true };
+});
+
 // ---------- 請求處理 ----------
 
 const LOGIN_PAGES = {
@@ -522,12 +643,15 @@ async function handlePage(ctx) {
   const assetUrl = (p) => new Request(new URL(p, url), request);
 
   if (url.pathname === '/') return env.ASSETS.fetch(assetUrl('/index.html'));
+  if (url.pathname === '/observations') return env.ASSETS.fetch(assetUrl('/observations.html'));
 
   const login = LOGIN_PAGES[url.pathname];
   if (login) {
     const session = await getSession(ctx);
     if (session && (session.role === 'owner') === (login.role === 'admin')) {
-      return new Response(null, { status: 302, headers: { Location: '/' } });
+      const next = url.searchParams.get('next');
+      const location = next && /^\/[\w-]*$/.test(next) ? next : '/';
+      return new Response(null, { status: 302, headers: { Location: location } });
     }
     const template = await (await env.ASSETS.fetch(assetUrl('/login.html'))).text();
     const html = template

@@ -3,6 +3,9 @@
 const form = document.getElementById('login-form');
 const errorEl = document.getElementById('login-error');
 const submit = document.getElementById('login-submit');
+// 登入後回到原頁面（只接受站內路徑）
+const next = new URLSearchParams(location.search).get('next');
+const target = next && /^\/[\w-]*$/.test(next) ? next : '/';
 const endpoint = form.dataset.role === 'admin' ? '/api/admin/login' : '/api/schools/login';
 
 form.addEventListener('submit', async (event) => {
@@ -18,7 +21,7 @@ form.addEventListener('submit', async (event) => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || '登入失敗，請稍後重試。');
-    window.location.replace('/');
+    window.location.replace(target);
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.hidden = false;
