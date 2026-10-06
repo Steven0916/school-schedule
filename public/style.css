@@ -301,9 +301,6 @@ select{font:inherit}
 }
 
 /* ---------- 公開觀課 ---------- */
-.mode-overview{background:#fff;border:1px solid #dbe6ed;border-radius:15px;grid-template-columns:1.3fr repeat(6,1fr);display:grid;overflow:hidden;box-shadow:0 10px 30px #1b4c6610}
-.mode-overview .overview-primary{min-height:130px}
-.mode-overview .overview-cell{justify-content:flex-end;padding:22px 18px}
 .mode-chips{flex-wrap:wrap;gap:6px;margin-top:10px;display:flex}
 .mode-chip{color:#7955a5;background:#f2ecfc;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:700}
 .event-detail-list .mode-chips{margin-top:2px}
@@ -320,13 +317,5 @@ select{font:inherit}
 .observation-form .mode-option{color:#1e3c51;cursor:pointer;background:#fff;border:1px solid #cbdce5;border-radius:8px;flex-direction:row;align-items:center;gap:8px;padding:10px 12px;font-size:15px}
 .observation-form .mode-option:has(input:checked){background:#f2ecfc;border-color:#b79ad9}
 .observation-form .mode-option input{accent-color:#7955a5;flex:none;width:17px;min-height:0;height:17px;margin:0;padding:0}
-@media (max-width:950px){.mode-overview{grid-template-columns:repeat(6,1fr)}
-.mode-overview .overview-primary{grid-column:1/-1;min-height:100px}
-.mode-overview .overview-cell{border-top:1px solid #e7edf1}
-.mode-overview .overview-cell:nth-child(2){border-left:0}
-}
-@media (max-width:600px){.mode-overview{grid-template-columns:repeat(3,1fr)}
-.mode-overview .overview-cell{border-left:1px solid #e7edf1;min-height:86px;padding:14px}
-.mode-overview .overview-cell:nth-child(3n+2){border-left:0}
-.mode-options{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:600px){.mode-options{grid-template-columns:repeat(2,minmax(0,1fr))}
 }

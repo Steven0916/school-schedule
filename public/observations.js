@@ -3,8 +3,8 @@
 // 公開觀課填報頁面（共用工具在 common.js）
 
 const AI_MODES = ['AI備課', 'AI教學', 'AI評量', 'AI協作', 'AI創作', 'AI探究'];
-const GRADE_NAMES = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
-const gradeLabel = (g) => `${GRADE_NAMES[g - 1]}年級`;
+const GRADES = { 7: '七年級', 8: '八年級', 9: '九年級' };
+const gradeLabel = (g) => GRADES[g] || `${g} 年級`;
 const classLabel = (o) => `${gradeLabel(o.grade)} ${o.className} 班 · ${o.students} 人`;
 const periodLabel = (o) => `共 ${o.periods} 節，每節 ${o.minutes} 分鐘`;
 const byObsDate = (a, b) => a.date.localeCompare(b.date) || a.id - b.id;
@@ -16,7 +16,6 @@ const state = {
   records: [],
   loading: true,
   loadError: '',
-  filter: '全部',
 };
 
 const canEdit = () => state.role !== 'viewer';
@@ -81,7 +80,7 @@ function openRecordForm(existing) {
     'select',
     { className: 'form-select', required: true, 'aria-label': '年級', value: String(v.grade) },
     h('option', { value: '' }, '請選擇'),
-    GRADE_NAMES.map((_, i) => h('option', { value: String(i + 1) }, gradeLabel(i + 1)))
+    Object.entries(GRADES).map(([g, name]) => h('option', { value: g }, name))
   );
   const className = h('input', { required: true, maxlength: 20, placeholder: '例如：1', 'aria-label': '班級', value: v.className });
   const num = (value, min, max, label) =>
@@ -242,8 +241,7 @@ function recordRow(o) {
         h('span', {}, h('strong', {}, '班級'), classLabel(o)),
         h('span', {}, h('strong', {}, '節數'), periodLabel(o)),
         o.createdBySchool && h('span', {}, h('strong', {}, '學校'), o.createdBySchool)
-      ),
-      h('div', { className: 'mode-chips' }, o.modes.map(modeChip))
+      )
     ),
     o.canModify &&
       h(
@@ -261,7 +259,6 @@ function recordRow(o) {
 
 function render() {
   const dash = state.loading;
-  const count = (m) => state.records.filter((r) => r.modes.includes(m)).length;
 
   $('intro-actions').replaceChildren(
     canEdit()
@@ -280,30 +277,7 @@ function render() {
     banner.replaceChildren(h('span', {}, `學校端 · ${state.schoolName} · ${state.username}`), h('button', { onClick: logout }, '登出'));
   else banner.replaceChildren(h('span', {}, '公開瀏覽 · 設計者姓名已部分隱藏，登入後可看完整資料並填報。'));
 
-  $('mode-overview').replaceChildren(
-    h('div', { className: 'overview-primary' }, h('span', {}, '觀課場次'), h('strong', {}, dash ? '—' : String(state.records.length).padStart(2, '0'))),
-    ...AI_MODES.map((m) => h('div', { className: 'overview-cell' }, h('span', {}, m), h('strong', {}, dash ? '—' : String(count(m)))))
-  );
-
-  $('filters').replaceChildren(
-    ...['全部', ...AI_MODES].map((m) =>
-      h(
-        'button',
-        {
-          'aria-pressed': String(state.filter === m),
-          className: state.filter === m ? 'filter active' : 'filter',
-          onClick: () => {
-            state.filter = m;
-            render();
-          },
-        },
-        m === '全部' && icon('layout-grid', 16),
-        m
-      )
-    )
-  );
-
-  const shown = state.records.filter((r) => state.filter === '全部' || r.modes.includes(state.filter));
+  const shown = state.records;
   $('record-count').textContent = dash ? '' : `${shown.length} 筆`;
   const list = $('record-list');
   if (dash) list.replaceChildren(h('div', { className: 'empty-state' }, h('p', {}, '正在載入…')));
@@ -323,7 +297,7 @@ function render() {
         'div',
         { className: 'empty-state' },
         h('div', { className: 'empty-icon' }, icon('eye', 28)),
-        h('h3', {}, state.filter === '全部' ? '尚無公開觀課資料' : `尚無勾選「${state.filter}」的資料`),
+        h('h3', {}, '尚無公開觀課資料'),
         h('p', {}, '填報後會顯示在這裡。'),
         canEdit() && h('button', { className: 'empty-add', onClick: () => openRecordForm(null) }, icon('plus', 17), '填報公開觀課')
       )

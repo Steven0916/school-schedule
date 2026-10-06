@@ -2,6 +2,7 @@
 
 const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
 const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中'];
+const GRADES = [7, 8, 9];
 const AI_MODES = ['AI備課', 'AI教學', 'AI評量', 'AI協作', 'AI創作', 'AI探究'];
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,40}$/;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -110,6 +111,10 @@ function requiredString(value, max, label) {
   return s;
 }
 
+function invalid(message) {
+  throw new HttpError(400, message);
+}
+
 function intInRange(value, min, max, label) {
   const n = Number(value);
   if (!Number.isInteger(n) || n < min || n > max) throw new HttpError(400, `${label}需為 ${min} 到 ${max} 的整數。`);
@@ -124,7 +129,7 @@ function normalizeObservation(body) {
     date: body.date,
     subject: requiredString(body.subject, 40, '領域/科目'),
     designer: requiredString(body.designer, 80, '設計者'),
-    grade: intInRange(body.grade, 1, 12, '年級'),
+    grade: GRADES.includes(Number(body.grade)) ? Number(body.grade) : invalid('請選擇年級（七、八、九年級）。'),
     className: requiredString(body.className, 20, '班級'),
     students: intInRange(body.students, 1, 200, '人數'),
     periods: intInRange(body.periods, 1, 30, '總節數'),
