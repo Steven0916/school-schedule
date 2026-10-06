@@ -4,6 +4,7 @@ const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
 const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中'];
 const GRADES = [7, 8, 9];
 const AI_MODES = ['AI備課', 'AI教學', 'AI評量', 'AI協作', 'AI創作', 'AI探究'];
+const SCHOOL_PASSWORD_MIN = 6;
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,40}$/;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_NAME = 'sid';
@@ -53,9 +54,9 @@ function randomToken() {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function validatePassword(password) {
-  if (typeof password !== 'string' || password.length < 9 || password.length > 128) {
-    throw new HttpError(400, '密碼長度需為 9 到 128 個字元。');
+function validatePassword(password, min = 9) {
+  if (typeof password !== 'string' || password.length < min || password.length > 128) {
+    throw new HttpError(400, `密碼長度需為 ${min} 到 128 個字元。`);
   }
 }
 
@@ -401,7 +402,7 @@ route('POST', '/api/schools/members', async (ctx) => {
   const schoolName = optionalString(ctx.body.schoolName, 80, '學校名稱');
   if (!schoolName) throw new HttpError(400, '請填寫學校名稱。');
   validateUsername(ctx.body.username);
-  validatePassword(ctx.body.password);
+  validatePassword(ctx.body.password, SCHOOL_PASSWORD_MIN);
   const exists = await ctx.db
     .prepare('SELECT id FROM members WHERE username = ? COLLATE NOCASE')
     .bind(ctx.body.username)
@@ -424,7 +425,7 @@ async function findMember(ctx) {
 route('PATCH', '/api/schools/members/:id', async (ctx) => {
   requireOwner(ctx.session);
   const member = await findMember(ctx);
-  validatePassword(ctx.body.password);
+  validatePassword(ctx.body.password, SCHOOL_PASSWORD_MIN);
   await ctx.db.batch([
     ctx.db.prepare('UPDATE members SET password_hash = ? WHERE id = ?').bind(await hashPassword(ctx.body.password), member.id),
     ctx.db.prepare('DELETE FROM sessions WHERE member_id = ?').bind(member.id),

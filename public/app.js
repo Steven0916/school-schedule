@@ -592,10 +592,10 @@ function mountSchoolAccess() {
   const password = h('input', {
     required: true,
     type: 'password',
-    minlength: 9,
+    minlength: 6,
     maxlength: 128,
     autocomplete: 'new-password',
-    placeholder: '至少 9 個字元',
+    placeholder: '至少 6 個字元',
   });
   const createBtn = h('button', { className: 'submit-button' }, icon('plus', 16), '建立帳號');
   const createForm = h(
@@ -661,7 +661,7 @@ function mountSchoolAccess() {
   });
 
   function openResetPassword(m) {
-    const pw = h('input', { required: true, type: 'password', minlength: 9, maxlength: 128, autocomplete: 'new-password' });
+    const pw = h('input', { required: true, type: 'password', minlength: 6, maxlength: 128, autocomplete: 'new-password' });
     const error = h('p', { className: 'form-error', role: 'alert', hidden: true });
     const cancel = h('button', { type: 'button', className: 'cancel-button', onClick: closeModal }, '取消');
     const save = h('button', { type: 'submit', className: 'submit-button' }, '儲存新密碼');
