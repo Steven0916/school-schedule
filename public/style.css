@@ -322,22 +322,28 @@ select{font:inherit}
 .member-row .account-actions{margin-left:auto}
 }
 
-/* ---------- 左側選單 ---------- */
-.side-nav{z-index:40;background:#fff;border-right:1px solid #dbe5eb;flex-direction:column;gap:4px;width:232px;padding:28px 16px;display:flex;position:fixed;top:0;bottom:0;left:0;overflow-y:auto}
-.side-nav-title{color:#7b909e;letter-spacing:.14em;margin:6px 10px 10px;font-size:12px;font-weight:800}
-.side-link{color:#3f6075;border-radius:9px;align-items:center;gap:10px;padding:11px 12px;font-size:15px;font-weight:700;text-decoration:none;display:flex}
+/* ---------- 左側選單（點選「選單」按鈕打開） ---------- */
+.header{justify-content:flex-start;gap:16px}
+.menu-button{color:#123e63;background:#fff;border:1px solid #cbdce5;border-radius:10px;flex:none;align-items:center;gap:7px;min-height:43px;padding:9px 14px;font-size:15px;font-weight:700;display:inline-flex}
+.menu-button:hover{background:#ecf5fa}
+.menu-button svg{display:block}
+.side-nav{z-index:50;background:#fff;flex-direction:column;gap:4px;width:min(280px,82vw);padding:20px 16px;display:flex;position:fixed;top:0;bottom:0;left:0;overflow-y:auto;box-shadow:0 0 40px #0f2e4630;transition:transform .22s ease,visibility .22s;transform:translateX(-105%);visibility:hidden}
+.side-nav.open{visibility:visible;transition:transform .22s ease;transform:none}
+.side-nav-top{justify-content:space-between;align-items:center;margin-bottom:10px;display:flex}
+.side-nav-title{color:#7b909e;letter-spacing:.14em;margin:0 10px;font-size:12px;font-weight:800}
+.side-nav-close{color:#6b8292;background:0 0;border:0;border-radius:6px;padding:6px;line-height:0}
+.side-nav-close:hover{background:#eef4f8}
+.side-link{color:#3f6075;border-radius:9px;align-items:center;gap:10px;padding:12px;font-size:15px;font-weight:700;text-decoration:none;display:flex}
 .side-link svg{flex:none;color:#6a8a9e}
 .side-link:hover{background:#eef5f9}
 .side-link[aria-current=page]{color:#fff;background:#123e63}
 .side-link[aria-current=page] svg{color:#cfe3ef}
-.side-link:focus-visible{outline-offset:2px;outline:3px solid #59a6c4}
-body.has-side-nav .site-shell{margin-left:232px}
+.side-link:focus-visible,.menu-button:focus-visible,.side-nav-close:focus-visible{outline-offset:2px;outline:3px solid #59a6c4}
+.side-nav-backdrop{z-index:45;background:#0b1f2f59;position:fixed;inset:0}
 #schedule,#completed{scroll-margin-top:20px}
-@media (max-width:1100px){.side-nav{border-bottom:1px solid #dbe5eb;border-right:0;flex-direction:row;gap:6px;width:auto;padding:10px 16px;position:sticky;bottom:auto;overflow-x:auto}
-.side-nav-title{display:none}
-.side-link{white-space:nowrap;padding:8px 12px;font-size:14px}
-body.has-side-nav .site-shell{margin-left:0}
-#schedule,#completed{scroll-margin-top:70px}
+@media (prefers-reduced-motion:reduce){.side-nav{transition:none}}
+@media (max-width:600px){.menu-button{min-height:40px;padding:8px 11px}
+
 }
 
 /* ---------- 計畫成員 ---------- */

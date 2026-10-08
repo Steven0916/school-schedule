@@ -25,6 +25,7 @@ const ICONS = {
   key: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>',
   'chevron-right': '<path d="m9 18 6-6-6-6"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  menu: '<path d="M4 12h16"/><path d="M4 6h16"/><path d="M4 18h16"/>',
   'circle-check-big': '<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>',
 };
 
@@ -196,17 +197,45 @@ function mountSideNav() {
   };
   markCurrent();
   window.addEventListener('hashchange', markCurrent);
+  // 選單平時收起，按頁首的「選單」按鈕才從左側滑出
+  const toggle = h(
+    'button',
+    { type: 'button', className: 'menu-button', 'aria-controls': 'side-nav', 'aria-expanded': 'false' },
+    icon('menu', 20),
+    h('span', {}, '選單')
+  );
+  const closeBtn = h('button', { type: 'button', className: 'side-nav-close', 'aria-label': '關閉選單' }, icon('x', 18));
   const nav = h(
     'nav',
-    { className: 'side-nav', 'aria-label': '主選單' },
-    h('p', { className: 'side-nav-title' }, '選單'),
+    { id: 'side-nav', className: 'side-nav', 'aria-label': '主選單', inert: true },
+    h('div', { className: 'side-nav-top' }, h('p', { className: 'side-nav-title' }, '選單'), closeBtn),
     links.map((l) => l.el)
   );
-  document.body.prepend(nav);
-  document.body.classList.add('has-side-nav');
-  // 手機版選單為橫向捲動，讓目前頁面的連結露出來
-  const current = nav.querySelector('[aria-current=page]');
-  if (current && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = current.offsetLeft - 16;
+  const backdrop = h('div', { className: 'side-nav-backdrop', hidden: true });
+
+  const setOpen = (open) => {
+    nav.classList.toggle('open', open);
+    nav.inert = !open;
+    backdrop.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    if (open) (nav.querySelector('[aria-current=page]') || links[0].el).focus();
+  };
+  toggle.addEventListener('click', () => setOpen(!nav.classList.contains('open')));
+  closeBtn.addEventListener('click', () => {
+    setOpen(false);
+    toggle.focus();
+  });
+  backdrop.addEventListener('click', () => setOpen(false));
+  for (const l of links) l.el.addEventListener('click', () => setOpen(false));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && nav.classList.contains('open')) {
+      setOpen(false);
+      toggle.focus();
+    }
+  });
+
+  document.body.prepend(nav, backdrop);
+  document.querySelector('.header')?.prepend(toggle);
 }
 
 mountSideNav();
