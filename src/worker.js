@@ -47,6 +47,29 @@ async function verifyPassword(password, stored) {
   return diff === 0;
 }
 
+// 學校端密碼的可還原副本（讓管理者查看）。金鑰：PASSWORD_KEY（32 bytes base64）
+async function passwordKey(env) {
+  const raw = env.PASSWORD_KEY ? Uint8Array.from(atob(env.PASSWORD_KEY), (c) => c.charCodeAt(0)) : null;
+  if (!raw || raw.length !== 32) return null;
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+async function encryptPassword(env, password) {
+  const key = await passwordKey(env);
+  if (!key) return null;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(password));
+  return `${toHex(iv)}$${toHex(data)}`;
+}
+
+async function decryptPassword(env, stored) {
+  const key = await passwordKey(env);
+  if (!key) throw new HttpError(503, '尚未設定密碼加密金鑰（PASSWORD_KEY）。');
+  const [ivHex, dataHex] = String(stored).split('$');
+  const data = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromHex(ivHex) }, key, fromHex(dataHex));
+  return new TextDecoder().decode(data);
+}
+
 const sha256 = async (value) => toHex(await crypto.subtle.digest('SHA-256', enc.encode(value)));
 
 function randomToken() {
@@ -194,7 +217,12 @@ function toObservation(row, session) {
   };
 }
 
-const toMember = (row) => ({ id: row.id, schoolName: row.school_name, username: row.username });
+const toMember = (row) => ({
+  id: row.id,
+  schoolName: row.school_name,
+  username: row.username,
+  passwordViewable: Boolean(row.password_enc),
+});
 
 async function findEvent(ctx, id, { deleted = false } = {}) {
   const row = await ctx.db
@@ -409,8 +437,11 @@ route('POST', '/api/schools/members', async (ctx) => {
     .first();
   if (exists) throw new HttpError(409, '此帳號已被使用。');
   const row = await ctx.db
-    .prepare('INSERT INTO members (school_name, username, password_hash, created_at) VALUES (?, ?, ?, ?) RETURNING *')
-    .bind(schoolName, ctx.body.username, await hashPassword(ctx.body.password), new Date().toISOString())
+    .prepare(
+      'INSERT INTO members (school_name, username, password_hash, password_enc, created_at) VALUES (?, ?, ?, ?, ?) RETURNING *'
+    )
+    .bind(schoolName, ctx.body.username, await hashPassword(ctx.body.password),
+      await encryptPassword(ctx.env, ctx.body.password), new Date().toISOString())
     .first();
   await audit(ctx, '建立學校帳號', `${schoolName}（${row.username}）`);
   return toMember(row);
@@ -422,16 +453,64 @@ async function findMember(ctx) {
   return member;
 }
 
+route('GET', '/api/schools/members/:id/password', async (ctx) => {
+  requireOwner(ctx.session);
+  const member = await findMember(ctx);
+  if (!member.password_enc) {
+    throw new HttpError(404, '這個帳號的密碼是在加入查看功能前設定的，無法顯示；重設密碼後即可查看。');
+  }
+  const password = await decryptPassword(ctx.env, member.password_enc);
+  await audit(ctx, '查看學校密碼', `${member.school_name}（${member.username}）`);
+  return { password };
+});
+
+// 修改學校帳號：學校名稱、帳號、密碼皆可改，未提供的欄位不變
 route('PATCH', '/api/schools/members/:id', async (ctx) => {
   requireOwner(ctx.session);
   const member = await findMember(ctx);
-  validatePassword(ctx.body.password, SCHOOL_PASSWORD_MIN);
-  await ctx.db.batch([
-    ctx.db.prepare('UPDATE members SET password_hash = ? WHERE id = ?').bind(await hashPassword(ctx.body.password), member.id),
-    ctx.db.prepare('DELETE FROM sessions WHERE member_id = ?').bind(member.id),
-  ]);
-  await audit(ctx, '重設學校密碼', `${member.school_name}（${member.username}）`);
-  return toMember(member);
+  const changes = [];
+
+  let schoolName = member.school_name;
+  if (ctx.body.schoolName !== undefined) {
+    schoolName = optionalString(ctx.body.schoolName, 80, '學校名稱');
+    if (!schoolName) throw new HttpError(400, '請填寫學校名稱。');
+    if (schoolName !== member.school_name) changes.push(`學校名稱 ${member.school_name} → ${schoolName}`);
+  }
+
+  let username = member.username;
+  if (ctx.body.username !== undefined && ctx.body.username !== member.username) {
+    validateUsername(ctx.body.username);
+    const exists = await ctx.db
+      .prepare('SELECT id FROM members WHERE username = ? COLLATE NOCASE AND id != ?')
+      .bind(ctx.body.username, member.id)
+      .first();
+    if (exists) throw new HttpError(409, '此帳號已被使用。');
+    username = ctx.body.username;
+    changes.push(`帳號 ${member.username} → ${username}`);
+  }
+
+  let passwordHash = member.password_hash;
+  let passwordEnc = member.password_enc;
+  if (ctx.body.password) {
+    validatePassword(ctx.body.password, SCHOOL_PASSWORD_MIN);
+    passwordHash = await hashPassword(ctx.body.password);
+    passwordEnc = await encryptPassword(ctx.env, ctx.body.password);
+    changes.push('重設密碼');
+  }
+
+  if (!changes.length) return toMember(member);
+  const statements = [
+    ctx.db
+      .prepare('UPDATE members SET school_name = ?, username = ?, password_hash = ?, password_enc = ? WHERE id = ?')
+      .bind(schoolName, username, passwordHash, passwordEnc, member.id),
+  ];
+  // 帳號或密碼變更後，原有登入失效
+  if (username !== member.username || ctx.body.password) {
+    statements.push(ctx.db.prepare('DELETE FROM sessions WHERE member_id = ?').bind(member.id));
+  }
+  await ctx.db.batch(statements);
+  await audit(ctx, '修改學校帳號', `${member.school_name}（${member.username}）：${changes.join('、')}`);
+  return toMember({ ...member, school_name: schoolName, username, password_enc: passwordEnc });
 });
 
 route('DELETE', '/api/schools/members/:id', async (ctx) => {

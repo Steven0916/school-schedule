@@ -534,6 +534,48 @@ function mountSchoolAccess() {
     okEl.hidden = !ok;
   };
 
+  // 已顯示的密碼（id → 密碼），只存在目前頁面
+  const revealed = new Map();
+
+  async function togglePassword(m) {
+    if (revealed.has(m.id)) {
+      revealed.delete(m.id);
+      renderMembers();
+      return;
+    }
+    setMsg('');
+    try {
+      const { password } = await api(`/api/schools/members/${m.id}/password`);
+      revealed.set(m.id, password);
+      renderMembers();
+    } catch (err) {
+      setMsg(err.message || '無法顯示密碼');
+    }
+  }
+
+  function passwordCell(m) {
+    if (!m.passwordViewable) {
+      return h('span', { className: 'member-password' }, '密碼：無法顯示（舊帳號，按「編輯」設定新密碼後即可查看）');
+    }
+    const shown = revealed.has(m.id);
+    return h(
+      'span',
+      { className: 'member-password' },
+      '密碼：',
+      h('code', {}, shown ? revealed.get(m.id) : '••••••'),
+      h(
+        'button',
+        {
+          type: 'button',
+          className: 'text-link',
+          'aria-label': `${shown ? '隱藏' : '顯示'} ${m.username} 的密碼`,
+          onClick: () => togglePassword(m),
+        },
+        shown ? '隱藏' : '顯示'
+      )
+    );
+  }
+
   function renderMembers() {
     summaryCount.textContent = `${members.length} 個學校帳號`;
     listEl.replaceChildren(
@@ -545,20 +587,15 @@ function mountSchoolAccess() {
               h(
                 'div',
                 { className: 'member-row' },
-                h('div', {}, h('strong', {}, m.schoolName), h('span', {}, `帳號：${m.username}`)),
+                h('div', {}, h('strong', {}, m.schoolName), h('span', {}, `帳號：${m.username}`), passwordCell(m)),
                 h(
                   'div',
                   { className: 'account-actions' },
                   h(
                     'button',
-                    {
-                      type: 'button',
-                      className: 'delete-button',
-                      title: '重設密碼',
-                      'aria-label': `重設 ${m.username} 的密碼`,
-                      onClick: () => openResetPassword(m),
-                    },
-                    icon('key', 18)
+                    { type: 'button', className: 'edit-button', 'aria-label': `編輯 ${m.username}`, onClick: () => openEditMember(m) },
+                    icon('pencil', 16),
+                    h('span', {}, '編輯')
                   ),
                   h(
                     'button',
@@ -591,7 +628,7 @@ function mountSchoolAccess() {
   });
   const password = h('input', {
     required: true,
-    type: 'password',
+    type: 'text',
     minlength: 6,
     maxlength: 128,
     autocomplete: 'new-password',
@@ -660,15 +697,29 @@ function mountSchoolAccess() {
     }
   });
 
-  function openResetPassword(m) {
-    const pw = h('input', { required: true, type: 'password', minlength: 6, maxlength: 128, autocomplete: 'new-password' });
+  // 編輯學校帳號：學校名稱、帳號、密碼
+  async function openEditMember(m) {
+    const name = h('input', { required: true, maxlength: 80, value: m.schoolName });
+    const user = h('input', {
+      required: true,
+      minlength: 3,
+      maxlength: 40,
+      pattern: '[a-zA-Z0-9._-]+',
+      autocomplete: 'off',
+      value: m.username,
+    });
+    const pw = h('input', { type: 'text', minlength: 6, maxlength: 128, autocomplete: 'off', placeholder: '留空表示不變更' });
+    const current = h('p', { className: 'field-hint' });
     const error = h('p', { className: 'form-error', role: 'alert', hidden: true });
     const cancel = h('button', { type: 'button', className: 'cancel-button', onClick: closeModal }, '取消');
-    const save = h('button', { type: 'submit', className: 'submit-button' }, '儲存新密碼');
+    const save = h('button', { type: 'submit', className: 'submit-button' }, '儲存');
     const form = h(
       'form',
       { className: 'login-form' },
-      h('label', {}, '新密碼', pw),
+      h('label', {}, '學校名稱', name),
+      h('label', {}, '學校端帳號', user),
+      h('label', {}, '新密碼（至少 6 個字元）', pw),
+      current,
       error,
       h('div', { className: 'modal-actions' }, cancel, save)
     );
@@ -677,17 +728,36 @@ function mountSchoolAccess() {
       modalBusy = true;
       save.disabled = cancel.disabled = true;
       try {
-        await api(`/api/schools/members/${m.id}`, { method: 'PATCH', body: { password: pw.value } });
+        const body = { schoolName: name.value, username: user.value };
+        if (pw.value) body.password = pw.value;
+        const updated = await api(`/api/schools/members/${m.id}`, { method: 'PATCH', body });
+        members = members
+          .map((x) => (x.id === m.id ? updated : x))
+          .sort((a, b) => a.schoolName.localeCompare(b.schoolName) || a.username.localeCompare(b.username));
+        if (pw.value) revealed.set(m.id, pw.value);
+        renderMembers();
         closeModal();
-        setMsg('', `已重設 ${m.username} 的密碼，原有登入已失效。`);
+        const relogin = pw.value || user.value !== m.username;
+        setMsg('', `已更新 ${updated.username}${relogin ? '，該帳號原有登入已失效。' : '。'}`);
       } catch (err) {
         modalBusy = false;
         save.disabled = cancel.disabled = false;
-        setError(error, err.message || '重設失敗');
+        setError(error, err.message || '更新失敗');
       }
     });
-    openModal(`重設 ${m.username} 的密碼`, '設定新密碼後，原有登入會立即失效。', form);
-    pw.focus();
+    openModal(`編輯 ${m.schoolName}`, '修改帳號或密碼後，該帳號原有登入會立即失效。', form);
+    name.focus();
+    if (!m.passwordViewable) {
+      current.textContent = '目前密碼無法顯示（舊帳號），設定新密碼後即可查看。';
+      return;
+    }
+    current.textContent = '目前密碼：讀取中…';
+    try {
+      const { password } = await api(`/api/schools/members/${m.id}/password`);
+      current.textContent = `目前密碼：${password}`;
+    } catch (err) {
+      current.textContent = err.message;
+    }
   }
 
   function openRemoveMember(m) {
@@ -724,7 +794,7 @@ function mountSchoolAccess() {
         'details',
         {},
         h('summary', {}, '帳號與權限 ', summaryCount),
-        h('p', {}, '設定學校端帳號及密碼。每個帳號可以新增期程，只能刪除自己新增的項目。重設密碼或移除帳號後，該帳號現有登入即失效。'),
+        h('p', {}, '設定學校端帳號及密碼，可隨時查看與修改。每個帳號可以新增期程，只能刪除自己新增的項目。修改帳號、密碼或移除帳號後，該帳號現有登入即失效。'),
         createForm,
         errorEl,
         okEl,

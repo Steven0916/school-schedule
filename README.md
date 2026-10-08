@@ -20,7 +20,7 @@ npm run deploy       # 發佈到 Cloudflare
 git add . && git commit -m "說明" && git push   # 程式碼存到 GitHub
 ```
 
-本機測試的管理者密碼放在 `.dev.vars`（`ADMIN_PASSWORD=...`，不會上傳）。
+本機測試的秘密變數放在 `.dev.vars`（`ADMIN_PASSWORD=...`、`PASSWORD_KEY=...`，不會上傳）。
 
 ## 管理者密碼
 
@@ -30,6 +30,12 @@ git add . && git commit -m "說明" && git push   # 程式碼存到 GitHub
   npx wrangler secret put ADMIN_PASSWORD
   npx wrangler d1 execute school-schedule --remote --command "DELETE FROM admin; DELETE FROM sessions WHERE role='owner'"
   ```
+
+## 學校端密碼查看
+
+- 管理者可在「帳號與權限」查看、修改學校端的學校名稱、帳號與密碼；每次查看密碼都會寫入操作紀錄。
+- 學校端密碼除了雜湊外，另存一份以 AES-GCM 加密的副本，金鑰為 Cloudflare 秘密變數 `PASSWORD_KEY`（32 bytes，base64）。**金鑰遺失或更換後，既有密碼將無法顯示**（仍可登入，重設後即可再查看）。
+- 加入此功能前建立的帳號沒有加密副本，需重設一次密碼才能查看。
 
 ## 資料備份
 
@@ -43,7 +49,7 @@ D1 也內建 30 天時間回溯（Time Travel）。
 
 - **公開瀏覽**：看期程清單與已完成工作。
 - **學校端**：新增期程；只能刪除／復原自己新增的項目。
-- **管理者**：新增、編輯、確認完成、刪除／復原所有期程，管理學校端帳號，查看操作紀錄。
+- **管理者**：新增、編輯、確認完成、刪除／復原所有期程，查看與管理學校端帳號密碼，查看操作紀錄。
 
 ## 公開觀課填報
 
