@@ -4,12 +4,13 @@
 
 網站：https://school-schedule.ydlo-school.workers.dev
 公開觀課填報：https://school-schedule.ydlo-school.workers.dev/observations
+計畫成員：https://school-schedule.ydlo-school.workers.dev/team
 
 ## 架構
 
 - **Cloudflare Workers**：`src/worker.js`（API 與頁面）
 - **Cloudflare D1**：資料庫（期程、學校帳號、登入狀態、操作紀錄），資料表定義在 `migrations/`
-- **靜態網頁**：`public/`（`common.js` 為兩個頁面共用的工具；`app.js` 期程頁、`observations.js` 公開觀課頁）
+- **靜態網頁**：`public/`（`common.js` 為各頁共用的工具與左側選單；`app.js` 期程頁、`observations.js` 公開觀課頁、`team.js` 計畫成員頁）
 
 ## 修改與上線
 
@@ -30,6 +31,11 @@ git add . && git commit -m "說明" && git push   # 程式碼存到 GitHub
   npx wrangler secret put ADMIN_PASSWORD
   npx wrangler d1 execute school-schedule --remote --command "DELETE FROM admin; DELETE FROM sessions WHERE role='owner'"
   ```
+
+## 計畫成員
+
+- 計畫主持人、協同主持人兩份名單，登入後按「新增名單」輸入姓名。
+- 未登入者看到的姓名中間字打碼；學校端只能刪除自己新增的名單，管理者可刪除全部。
 
 ## 學校端密碼查看
 

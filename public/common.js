@@ -170,3 +170,43 @@ function openConfirmText({ title, description, phrase, confirmLabel, busyLabel, 
   );
   input.focus();
 }
+
+// ---------- 左側選單（所有頁面共用） ----------
+
+const SIDE_LINKS = [
+  { href: '/#schedule', path: '/', hash: '#schedule', label: '期程清單', icon: 'calendar-days' },
+  { href: '/#completed', path: '/', hash: '#completed', label: '已完成工作', icon: 'circle-check-big' },
+  { href: '/observations', path: '/observations', label: '公開觀課填報', icon: 'eye' },
+  { href: '/team', path: '/team', label: '計畫成員', icon: 'users' },
+];
+
+function mountSideNav() {
+  const links = SIDE_LINKS.map((l) => ({
+    ...l,
+    el: h('a', { href: l.href, className: 'side-link' }, icon(l.icon, 18), h('span', {}, l.label)),
+  }));
+  const markCurrent = () => {
+    const onHome = location.pathname === '/';
+    const hash = location.hash === '#completed' ? '#completed' : '#schedule';
+    for (const l of links) {
+      const current = l.path === location.pathname && (!onHome || l.hash === hash);
+      if (current) l.el.setAttribute('aria-current', 'page');
+      else l.el.removeAttribute('aria-current');
+    }
+  };
+  markCurrent();
+  window.addEventListener('hashchange', markCurrent);
+  const nav = h(
+    'nav',
+    { className: 'side-nav', 'aria-label': '主選單' },
+    h('p', { className: 'side-nav-title' }, '選單'),
+    links.map((l) => l.el)
+  );
+  document.body.prepend(nav);
+  document.body.classList.add('has-side-nav');
+  // 手機版選單為橫向捲動，讓目前頁面的連結露出來
+  const current = nav.querySelector('[aria-current=page]');
+  if (current && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = current.offsetLeft - 16;
+}
+
+mountSideNav();

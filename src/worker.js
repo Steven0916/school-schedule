@@ -3,6 +3,7 @@
 const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
 const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中'];
 const GRADES = [7, 8, 9];
+const TEAM_ROLES = ['計畫主持人', '協同主持人'];
 const AI_MODES = ['AI備課', 'AI教學', 'AI評量', 'AI協作', 'AI創作', 'AI探究'];
 const SCHOOL_PASSWORD_MIN = 6;
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,40}$/;
@@ -672,6 +673,46 @@ route('DELETE', '/api/observations/:id', async (ctx) => {
   return { ok: true };
 });
 
+// 計畫成員
+const toTeamMember = (row, session) => ({
+  id: row.id,
+  role: row.role,
+  name: session ? row.name : maskName(row.name),
+  createdBySchool: row.created_by_school || null,
+  canModify: canDeleteEvent(row, session),
+});
+
+route('GET', '/api/team', async (ctx) => {
+  const { results } = await ctx.db.prepare('SELECT * FROM team_members ORDER BY id').all();
+  return results.map((r) => toTeamMember(r, ctx.session));
+});
+
+route('POST', '/api/team', async (ctx) => {
+  requireEditor(ctx.session);
+  if (!TEAM_ROLES.includes(ctx.body.role)) throw new HttpError(400, '身分不正確。');
+  const name = requiredString(ctx.body.name, 40, '姓名');
+  const school = ctx.session.role === 'school' ? ctx.session.member : null;
+  const row = await ctx.db
+    .prepare(
+      `INSERT INTO team_members (role, name, created_by_school, created_by_member_id, created_at)
+       VALUES (?, ?, ?, ?, ?) RETURNING *`
+    )
+    .bind(ctx.body.role, name, school?.school_name ?? null, school?.id ?? null, new Date().toISOString())
+    .first();
+  await audit(ctx, `新增${ctx.body.role}`, name);
+  return toTeamMember(row, ctx.session);
+});
+
+route('DELETE', '/api/team/:id', async (ctx) => {
+  requireEditor(ctx.session);
+  const row = await ctx.db.prepare('SELECT * FROM team_members WHERE id = ?').bind(ctx.params.id).first();
+  if (!row) throw new HttpError(404, '找不到這筆名單。');
+  if (!canDeleteEvent(row, ctx.session)) throw new HttpError(403, '只能刪除自己新增的名單。');
+  await ctx.db.prepare('DELETE FROM team_members WHERE id = ?').bind(row.id).run();
+  await audit(ctx, `刪除${row.role}`, row.name);
+  return { ok: true };
+});
+
 // ---------- 請求處理 ----------
 
 const LOGIN_PAGES = {
@@ -729,6 +770,7 @@ async function handlePage(ctx) {
 
   if (url.pathname === '/') return env.ASSETS.fetch(assetUrl('/index.html'));
   if (url.pathname === '/observations') return env.ASSETS.fetch(assetUrl('/observations.html'));
+  if (url.pathname === '/team') return env.ASSETS.fetch(assetUrl('/team.html'));
 
   const login = LOGIN_PAGES[url.pathname];
   if (login) {

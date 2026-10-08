@@ -288,18 +288,6 @@ select{font:inherit}
 .field-label{align-items:baseline;gap:4px;display:flex}
 .brand-mark svg,.completed-heading-icon svg{display:block}
 
-/* ---------- 頁面導覽 ---------- */
-.site-nav{gap:4px;display:flex}
-.site-nav a{color:#527a91;white-space:nowrap;border-radius:8px;padding:8px 12px;font-size:14px;font-weight:700;text-decoration:none}
-.site-nav a:hover{background:#e5f0f6}
-.site-nav a[aria-current=page]{color:#123e63;background:#e7f1f7}
-@media (max-width:600px){.header{gap:10px}
-.brand strong{font-size:17px}
-.site-nav a{padding:7px 8px;font-size:13px}
-}
-@media (max-width:420px){.header{flex-wrap:wrap;height:auto;padding:14px 0}
-}
-
 /* ---------- 公開觀課 ---------- */
 .mode-chips{flex-wrap:wrap;gap:6px;margin-top:10px;display:flex}
 .mode-chip{color:#7955a5;background:#f2ecfc;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:700}
@@ -332,4 +320,39 @@ select{font:inherit}
 .member-row .account-actions{flex:none;align-items:center}
 @media (max-width:600px){.member-row{flex-wrap:wrap}
 .member-row .account-actions{margin-left:auto}
+}
+
+/* ---------- 左側選單 ---------- */
+.side-nav{z-index:40;background:#fff;border-right:1px solid #dbe5eb;flex-direction:column;gap:4px;width:232px;padding:28px 16px;display:flex;position:fixed;top:0;bottom:0;left:0;overflow-y:auto}
+.side-nav-title{color:#7b909e;letter-spacing:.14em;margin:6px 10px 10px;font-size:12px;font-weight:800}
+.side-link{color:#3f6075;border-radius:9px;align-items:center;gap:10px;padding:11px 12px;font-size:15px;font-weight:700;text-decoration:none;display:flex}
+.side-link svg{flex:none;color:#6a8a9e}
+.side-link:hover{background:#eef5f9}
+.side-link[aria-current=page]{color:#fff;background:#123e63}
+.side-link[aria-current=page] svg{color:#cfe3ef}
+.side-link:focus-visible{outline-offset:2px;outline:3px solid #59a6c4}
+body.has-side-nav .site-shell{margin-left:232px}
+#schedule,#completed{scroll-margin-top:20px}
+@media (max-width:1100px){.side-nav{border-bottom:1px solid #dbe5eb;border-right:0;flex-direction:row;gap:6px;width:auto;padding:10px 16px;position:sticky;bottom:auto;overflow-x:auto}
+.side-nav-title{display:none}
+.side-link{white-space:nowrap;padding:8px 12px;font-size:14px}
+body.has-side-nav .site-shell{margin-left:0}
+#schedule,#completed{scroll-margin-top:70px}
+}
+
+/* ---------- 計畫成員 ---------- */
+.team-groups{grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin:0 0 60px;display:grid}
+.team-group{background:#fff;border:1px solid #dbe6ed;border-radius:14px;padding:20px 22px;box-shadow:0 8px 24px #234c6310}
+.team-group-top{justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;display:flex}
+.team-group-top h2{letter-spacing:-.02em;margin:0;font-size:21px}
+.team-group-top h2 span{color:#748b99;margin-left:8px;font-size:14px;font-weight:500}
+.team-list{margin:0;padding:0;list-style:none}
+.team-list li{border-top:1px solid #e7eef2;justify-content:space-between;align-items:center;gap:12px;padding:12px 4px;display:flex}
+.team-list li>div{align-items:baseline;gap:10px;min-width:0;display:flex;flex-wrap:wrap}
+.team-list strong{overflow-wrap:anywhere;font-size:16px}
+.team-list span{color:#7d919d;font-size:13px}
+.team-group .trash-empty{border-top:1px solid #e7eef2}
+@media (max-width:800px){.team-groups{grid-template-columns:1fr}
+}
+@media (max-width:600px){.team-group{padding:16px}
 }

@@ -824,7 +824,7 @@ function mountAuditLog() {
     'details',
     {},
     h('summary', {}, '操作紀錄 ', count),
-    h('p', {}, '記錄期程、公開觀課填報與帳號的變更，顯示最近 200 筆。'),
+    h('p', {}, '記錄期程、公開觀課填報、計畫成員與帳號的變更，顯示最近 200 筆。'),
     listEl
   );
 
@@ -894,6 +894,9 @@ async function init() {
   $('refresh-button').addEventListener('click', () => load());
 
   await load(true);
+  // 從左側選單連過來時（/#completed 等），資料載入後版面變高，需重新捲到該區塊
+  const target = location.hash && $(location.hash.slice(1));
+  if (target) target.scrollIntoView();
 
   const tick = () => {
     state.today = todayTaipei();
