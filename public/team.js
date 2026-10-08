@@ -3,6 +3,7 @@
 // 計畫成員頁面（共用工具在 common.js）
 
 const TEAM_ROLES = ['計畫主持人', '協同主持人'];
+const TEAM_TITLES = ['校長', '主任', '教師', '職員'];
 
 const state = {
   role: 'viewer',
@@ -27,14 +28,26 @@ async function load() {
   }
 }
 
-function openAddPerson(role) {
-  const name = h('input', { required: true, maxlength: 40, placeholder: '例如：王小明', autocomplete: 'off' });
+// 新增或編輯名單（existing 為 null 時是新增）
+function openPersonForm(role, existing = null) {
+  const select = (label, options, value) =>
+    h(
+      'select',
+      { className: 'form-select', required: true, 'aria-label': label, value },
+      h('option', { value: '' }, '請選擇'),
+      options.map((o) => h('option', { value: o }, o))
+    );
+  const title = select('身分', TEAM_TITLES, existing?.title || '');
+  const listSelect = select('名單', TEAM_ROLES, role);
+  const name = h('input', { required: true, maxlength: 40, placeholder: '例如：王小明', autocomplete: 'off', value: existing?.name || '' });
   const error = h('p', { className: 'form-error', role: 'alert', hidden: true });
   const cancel = h('button', { type: 'button', className: 'cancel-button', onClick: closeModal }, '取消');
-  const save = h('button', { type: 'submit', className: 'submit-button' }, '加入名單');
+  const save = h('button', { type: 'submit', className: 'submit-button' }, existing ? '儲存' : '加入名單');
   const form = h(
     'form',
     { className: 'login-form' },
+    existing && h('label', {}, '名單', listSelect),
+    h('label', {}, '身分', title),
     h('label', {}, '姓名', name),
     error,
     h('div', { className: 'modal-actions' }, cancel, save)
@@ -44,19 +57,29 @@ function openAddPerson(role) {
     modalBusy = true;
     save.disabled = cancel.disabled = true;
     try {
-      const person = await api('/api/team', { method: 'POST', body: { role, name: name.value } });
-      state.people = [...state.people, person];
+      const body = { role: existing ? listSelect.value : role, title: title.value, name: name.value };
+      const person = await api(existing ? `/api/team/${existing.id}` : '/api/team', {
+        method: existing ? 'PUT' : 'POST',
+        body,
+      });
+      state.people = existing
+        ? state.people.map((p) => (p.id === existing.id ? person : p))
+        : [...state.people, person];
       closeModal();
       render();
-      notify(`已將 ${person.name} 加入${role}名單`);
+      notify(existing ? `已更新 ${person.name}` : `已將 ${person.name} 加入${role}名單`);
     } catch (err) {
       modalBusy = false;
       save.disabled = cancel.disabled = false;
       setError(error, err.message);
     }
   });
-  openModal(`新增${role}`, '輸入姓名後加入名單。', form);
-  name.focus();
+  openModal(
+    existing ? `編輯${existing.role}` : `新增${role}`,
+    existing ? '修改身分或姓名；若放錯名單，可在「名單」改到另一邊。' : '選擇身分並輸入姓名後加入名單。',
+    form
+  );
+  (existing ? name : title).focus();
 }
 
 function openRemovePerson(p) {
@@ -108,18 +131,34 @@ function roleGroup(role) {
         h(
           'li',
           {},
-          h('div', {}, h('strong', {}, p.name), p.createdBySchool && h('span', {}, p.createdBySchool)),
+          h(
+            'div',
+            {},
+            h('strong', {}, p.name),
+            p.title ? h('span', { className: 'title-tag' }, p.title) : h('span', { className: 'title-missing' }, '未選身分'),
+            p.createdBySchool && h('span', {}, p.createdBySchool)
+          ),
           p.canModify &&
             h(
-              'button',
-              {
-                type: 'button',
-                className: 'delete-button',
-                title: '從名單移除',
-                'aria-label': `將 ${p.name} 從${role}名單移除`,
-                onClick: () => openRemovePerson(p),
-              },
-              icon('trash', 17)
+              'div',
+              { className: 'team-actions' },
+              h(
+                'button',
+                { type: 'button', className: 'edit-button', 'aria-label': `編輯 ${p.name}`, onClick: () => openPersonForm(role, p) },
+                icon('pencil', 15),
+                h('span', {}, '編輯')
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'delete-button',
+                  title: '從名單移除',
+                  'aria-label': `將 ${p.name} 從${role}名單移除`,
+                  onClick: () => openRemovePerson(p),
+                },
+                icon('trash', 17)
+              )
             )
         )
       )
@@ -132,7 +171,7 @@ function roleGroup(role) {
       'div',
       { className: 'team-group-top' },
       h('h2', {}, role, h('span', {}, state.loading ? '' : `${people.length} 人`)),
-      canEdit() && h('button', { className: 'empty-add', onClick: () => openAddPerson(role) }, icon('plus', 16), '新增名單')
+      canEdit() && h('button', { className: 'empty-add', onClick: () => openPersonForm(role) }, icon('plus', 16), '新增名單')
     ),
     body
   );
@@ -145,7 +184,7 @@ function render() {
     banner.replaceChildren(h('span', {}, `學校端 · ${state.schoolName} · ${state.username}`), h('button', { onClick: logout }, '登出'));
   else
     banner.replaceChildren(
-      h('span', {}, '公開瀏覽 · 姓名已部分隱藏，登入後可看完整名單並新增。'),
+      h('span', {}, '公開瀏覽 · 姓名已部分隱藏，登入後可看完整名單並新增、編輯。'),
       h('a', { href: '/school/login?next=/team' }, '學校端登入')
     );
 

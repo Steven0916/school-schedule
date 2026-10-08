@@ -4,6 +4,7 @@ const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
 const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中'];
 const GRADES = [7, 8, 9];
 const TEAM_ROLES = ['計畫主持人', '協同主持人'];
+const TEAM_TITLES = ['校長', '主任', '教師', '職員'];
 const AI_MODES = ['AI備課', 'AI教學', 'AI評量', 'AI協作', 'AI創作', 'AI探究'];
 const SCHOOL_PASSWORD_MIN = 6;
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,40}$/;
@@ -678,9 +679,23 @@ const toTeamMember = (row, session) => ({
   id: row.id,
   role: row.role,
   name: session ? row.name : maskName(row.name),
+  title: row.title || '',
   createdBySchool: row.created_by_school || null,
   canModify: canDeleteEvent(row, session),
 });
+
+function normalizeTeamMember(body) {
+  if (!TEAM_ROLES.includes(body.role)) throw new HttpError(400, '名單類別不正確。');
+  if (!TEAM_TITLES.includes(body.title)) throw new HttpError(400, '請選擇身分（校長、主任、教師、職員）。');
+  return { role: body.role, title: body.title, name: requiredString(body.name, 40, '姓名') };
+}
+
+async function findTeamMember(ctx) {
+  const row = await ctx.db.prepare('SELECT * FROM team_members WHERE id = ?').bind(ctx.params.id).first();
+  if (!row) throw new HttpError(404, '找不到這筆名單。');
+  if (!canDeleteEvent(row, ctx.session)) throw new HttpError(403, '只能修改自己新增的名單。');
+  return row;
+}
 
 route('GET', '/api/team', async (ctx) => {
   const { results } = await ctx.db.prepare('SELECT * FROM team_members ORDER BY id').all();
@@ -689,25 +704,35 @@ route('GET', '/api/team', async (ctx) => {
 
 route('POST', '/api/team', async (ctx) => {
   requireEditor(ctx.session);
-  if (!TEAM_ROLES.includes(ctx.body.role)) throw new HttpError(400, '身分不正確。');
-  const name = requiredString(ctx.body.name, 40, '姓名');
+  const p = normalizeTeamMember(ctx.body);
   const school = ctx.session.role === 'school' ? ctx.session.member : null;
   const row = await ctx.db
     .prepare(
-      `INSERT INTO team_members (role, name, created_by_school, created_by_member_id, created_at)
-       VALUES (?, ?, ?, ?, ?) RETURNING *`
+      `INSERT INTO team_members (role, name, title, created_by_school, created_by_member_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING *`
     )
-    .bind(ctx.body.role, name, school?.school_name ?? null, school?.id ?? null, new Date().toISOString())
+    .bind(p.role, p.name, p.title, school?.school_name ?? null, school?.id ?? null, new Date().toISOString())
     .first();
-  await audit(ctx, `新增${ctx.body.role}`, name);
+  await audit(ctx, `新增${p.role}`, `${p.name}（${p.title}）`);
+  return toTeamMember(row, ctx.session);
+});
+
+route('PUT', '/api/team/:id', async (ctx) => {
+  requireEditor(ctx.session);
+  const before = await findTeamMember(ctx);
+  const p = normalizeTeamMember(ctx.body);
+  const row = await ctx.db
+    .prepare('UPDATE team_members SET role = ?, name = ?, title = ? WHERE id = ? RETURNING *')
+    .bind(p.role, p.name, p.title, before.id)
+    .first();
+  const moved = before.role !== p.role ? `，${before.role} → ${p.role}` : '';
+  await audit(ctx, '編輯計畫成員', `${before.name} → ${p.name}（${p.title}）${moved}`);
   return toTeamMember(row, ctx.session);
 });
 
 route('DELETE', '/api/team/:id', async (ctx) => {
   requireEditor(ctx.session);
-  const row = await ctx.db.prepare('SELECT * FROM team_members WHERE id = ?').bind(ctx.params.id).first();
-  if (!row) throw new HttpError(404, '找不到這筆名單。');
-  if (!canDeleteEvent(row, ctx.session)) throw new HttpError(403, '只能刪除自己新增的名單。');
+  const row = await findTeamMember(ctx);
   await ctx.db.prepare('DELETE FROM team_members WHERE id = ?').bind(row.id).run();
   await audit(ctx, `刪除${row.role}`, row.name);
   return { ok: true };

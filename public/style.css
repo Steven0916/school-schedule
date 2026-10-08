@@ -362,3 +362,7 @@ select{font:inherit}
 }
 @media (max-width:600px){.team-group{padding:16px}
 }
+.team-actions{flex:none;align-items:center;gap:6px;display:flex}
+.team-actions .edit-button{min-height:36px;padding:7px 10px}
+.team-list .title-tag{color:#7955a5;background:#f2ecfc;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700}
+.team-list .title-missing{color:#a66a17;background:#fff2dd;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700}
