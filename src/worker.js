@@ -4,7 +4,7 @@ const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
 const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中'];
 const GRADES = [7, 8, 9];
 const TEAM_ROLES = ['計畫主持人', '協同主持人'];
-const TEAM_TITLES = ['校長', '主任', '教師', '職員'];
+const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
 const AI_MODES = ['AI備課', 'AI教學', 'AI評量', 'AI協作', 'AI創作', 'AI探究'];
 const SCHOOL_PASSWORD_MIN = 6;
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,40}$/;
@@ -686,7 +686,7 @@ const toTeamMember = (row, session) => ({
 
 function normalizeTeamMember(body) {
   if (!TEAM_ROLES.includes(body.role)) throw new HttpError(400, '名單類別不正確。');
-  if (!TEAM_TITLES.includes(body.title)) throw new HttpError(400, '請選擇身分（校長、主任、教師、職員）。');
+  if (!TEAM_TITLES.includes(body.title)) throw new HttpError(400, '請選擇身分（校長、主任、組長、教師、職員）。');
   return { role: body.role, title: body.title, name: requiredString(body.name, 40, '姓名') };
 }
 

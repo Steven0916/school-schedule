@@ -3,7 +3,7 @@
 // 計畫成員頁面（共用工具在 common.js）
 
 const TEAM_ROLES = ['計畫主持人', '協同主持人'];
-const TEAM_TITLES = ['校長', '主任', '教師', '職員'];
+const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
 
 const state = {
   role: 'viewer',
