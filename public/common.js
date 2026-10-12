@@ -26,6 +26,7 @@ const ICONS = {
   'chevron-right': '<path d="m9 18 6-6-6-6"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   menu: '<path d="M4 12h16"/><path d="M4 6h16"/><path d="M4 18h16"/>',
+  'arrow-up': '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
   'circle-check-big': '<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>',
 };
 
@@ -213,29 +214,55 @@ function mountSideNav() {
   );
   const backdrop = h('div', { className: 'side-nav-backdrop', hidden: true });
 
+  // 往下捲動後，左下角浮動按鈕：開選單、回到最上方
+  const floatMenu = h(
+    'button',
+    { type: 'button', className: 'float-button', 'aria-controls': 'side-nav', 'aria-expanded': 'false' },
+    icon('menu', 18),
+    h('span', {}, '選單')
+  );
+  const toTop = h('button', { type: 'button', className: 'float-button' }, icon('arrow-up', 18), h('span', {}, '最上方'));
+  const floatBar = h('div', { className: 'float-actions' }, floatMenu, toTop);
+  const toggles = [toggle, floatMenu];
+  let lastToggle = toggle;
+
   const setOpen = (open) => {
     nav.classList.toggle('open', open);
     nav.inert = !open;
     backdrop.hidden = !open;
-    toggle.setAttribute('aria-expanded', String(open));
+    for (const t of toggles) t.setAttribute('aria-expanded', String(open));
     if (open) (nav.querySelector('[aria-current=page]') || links[0].el).focus();
   };
-  toggle.addEventListener('click', () => setOpen(!nav.classList.contains('open')));
-  closeBtn.addEventListener('click', () => {
+  const closeAndReturnFocus = () => {
     setOpen(false);
-    toggle.focus();
-  });
+    lastToggle.focus();
+  };
+  for (const t of toggles) {
+    t.addEventListener('click', () => {
+      lastToggle = t;
+      setOpen(!nav.classList.contains('open'));
+    });
+  }
+  closeBtn.addEventListener('click', closeAndReturnFocus);
   backdrop.addEventListener('click', () => setOpen(false));
   for (const l of links) l.el.addEventListener('click', () => setOpen(false));
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && nav.classList.contains('open')) {
-      setOpen(false);
-      toggle.focus();
-    }
+    if (e.key === 'Escape' && nav.classList.contains('open')) closeAndReturnFocus();
   });
 
+  toTop.addEventListener('click', () => {
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+    toggle.focus({ preventScroll: true });
+  });
+  // 頁首的「選單」按鈕捲出畫面後才顯示浮動按鈕
+  const updateFloat = () => floatBar.classList.toggle('visible', window.scrollY > 200);
+  window.addEventListener('scroll', updateFloat, { passive: true });
+
   document.body.prepend(nav, backdrop);
+  document.body.append(floatBar);
   document.querySelector('.header')?.prepend(toggle);
+  updateFloat();
 }
 
 mountSideNav();

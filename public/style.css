@@ -366,3 +366,16 @@ select{font:inherit}
 .team-actions .edit-button{min-height:36px;padding:7px 10px}
 .team-list .title-tag{color:#7955a5;background:#f2ecfc;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700}
 .team-list .title-missing{color:#a66a17;background:#fff2dd;border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700}
+
+/* ---------- 浮動按鈕：選單、回到最上方 ---------- */
+.float-actions{z-index:30;flex-direction:column;gap:8px;display:flex;position:fixed;bottom:22px;left:18px;opacity:0;visibility:hidden;transform:translateY(8px);transition:opacity .18s,transform .18s,visibility .18s}
+.float-actions.visible{opacity:1;visibility:visible;transform:none}
+.float-button{color:#fff;background:#123e63;border:0;border-radius:999px;align-items:center;gap:7px;min-height:44px;padding:10px 16px;font-size:14px;font-weight:700;display:inline-flex;box-shadow:0 8px 20px #123e6340}
+.float-button:hover{background:#19557e}
+.float-button svg{display:block}
+.float-button:focus-visible{outline-offset:2px;outline:3px solid #59a6c4}
+@media (prefers-reduced-motion:reduce){.float-actions{transition:none}}
+@media (max-width:600px){.float-actions{bottom:16px;left:12px}
+.float-button{padding:10px 14px;font-size:13px}
+}
+footer{padding-bottom:130px}
