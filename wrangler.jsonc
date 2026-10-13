@@ -18,5 +18,8 @@
       "migrations_dir": "migrations"
     }
   ],
+  "kv_namespaces": [
+    { "binding": "FILES", "id": "4ec0b7ff06084dc581dab1ddb52d2ff2" }
+  ],
   "observability": { "enabled": true }
 }

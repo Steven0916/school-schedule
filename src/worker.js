@@ -201,8 +201,11 @@ function maskName(name) {
   });
 }
 
-function toObservation(row, session) {
+// files：這筆觀課的附件；未登入者只看得到數量
+function toObservation(row, session, files = []) {
   return {
+    fileCount: files.length,
+    files: session ? files.map(toFile) : [],
     id: row.id,
     date: row.date,
     subject: row.subject,
@@ -334,7 +337,8 @@ const clearLoginFailures = (ctx) => ctx.db.prepare('DELETE FROM login_failures W
 
 const routes = [];
 
-function route(method, pattern, handler) {
+// raw：不解析 JSON 內容（例如上傳檔案），由 handler 自行讀取 ctx.request
+function route(method, pattern, handler, { raw = false } = {}) {
   const keys = [];
   const re = new RegExp(
     `^${pattern.replace(/:(\w+)/g, (_, key) => {
@@ -342,7 +346,7 @@ function route(method, pattern, handler) {
       return '(\\d+)';
     })}$`
   );
-  routes.push({ method, re, keys, handler });
+  routes.push({ method, re, keys, handler, raw });
 }
 
 route('GET', '/api/me', async ({ session, db }) => {
@@ -625,11 +629,41 @@ async function findObservation(ctx) {
 
 const observationLabel = (o) => `${o.subject}｜${o.unit}（${o.date}）`;
 
+// 觀課 → 期程清單的「觀課計畫」。期程是公開的，所以不放設計者姓名。
+const GRADE_LABELS = { 7: '七年級', 8: '八年級', 9: '九年級' };
+function observationEvent(o, schoolName) {
+  return {
+    title: `公開觀課｜${o.subject}｜${o.unit}`.slice(0, 120),
+    date: o.date,
+    location: LOCATIONS.includes(schoolName) ? schoolName : '',
+    owner: schoolName || '',
+    notes: `${GRADE_LABELS[o.grade] || ''} ${o.className} 班 · 共 ${o.periods} 節，每節 ${o.minutes} 分鐘\n（由公開觀課填報自動建立）`,
+  };
+}
+
+function insertObservationEvent(ctx, observationId, o, school) {
+  const e = observationEvent(o, school?.school_name);
+  return ctx.db
+    .prepare(
+      `INSERT INTO events (title, category, start_date, end_date, time, location, owner, notes,
+         created_by_school, created_by_member_id, created_at, observation_id)
+       VALUES (?, '觀課計畫', ?, '', '', ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(e.title, e.date, e.location, e.owner, e.notes, school?.school_name ?? null, school?.id ?? null,
+      new Date().toISOString(), observationId);
+}
+
 route('GET', '/api/observations', async (ctx) => {
-  const { results } = await ctx.db
-    .prepare('SELECT * FROM observations WHERE deleted_at IS NULL ORDER BY date, id')
-    .all();
-  return results.map((r) => toObservation(r, ctx.session));
+  const [{ results }, files] = await Promise.all([
+    ctx.db.prepare('SELECT * FROM observations WHERE deleted_at IS NULL ORDER BY date, id').all(),
+    ctx.db.prepare('SELECT id, observation_id, name, content_type, size FROM observation_files ORDER BY id').all(),
+  ]);
+  const byObs = new Map();
+  for (const f of files.results) {
+    if (!byObs.has(f.observation_id)) byObs.set(f.observation_id, []);
+    byObs.get(f.observation_id).push(f);
+  }
+  return results.map((r) => toObservation(r, ctx.session, byObs.get(r.id) || []));
 });
 
 route('POST', '/api/observations', async (ctx) => {
@@ -645,8 +679,9 @@ route('POST', '/api/observations', async (ctx) => {
     .bind(o.date, o.subject, o.designer, o.grade, o.className, o.students, o.periods, o.minutes, o.unit,
       JSON.stringify(o.modes), school?.school_name ?? null, school?.id ?? null, new Date().toISOString())
     .first();
+  await insertObservationEvent(ctx, row.id, o, school).run();
   await audit(ctx, '填報公開觀課', observationLabel(o));
-  return toObservation(row, ctx.session);
+  return toObservation(row, ctx.session, []);
 });
 
 route('PUT', '/api/observations/:id', async (ctx) => {
@@ -661,16 +696,145 @@ route('PUT', '/api/observations/:id', async (ctx) => {
     .bind(o.date, o.subject, o.designer, o.grade, o.className, o.students, o.periods, o.minutes, o.unit,
       JSON.stringify(o.modes), new Date().toISOString(), before.id)
     .first();
+
+  // 同步期程：已有對應期程就更新（使用者刪掉的不再建回）；早於此功能的舊紀錄則補建
+  const linked = await ctx.db.prepare('SELECT id, deleted_at FROM events WHERE observation_id = ?').bind(before.id).first();
+  const school = before.created_by_member_id
+    ? { id: before.created_by_member_id, school_name: before.created_by_school }
+    : null;
+  if (!linked) {
+    await insertObservationEvent(ctx, before.id, o, school).run();
+  } else if (!linked.deleted_at) {
+    const e = observationEvent(o, before.created_by_school);
+    await ctx.db
+      .prepare('UPDATE events SET title = ?, start_date = ?, notes = ?, updated_at = ? WHERE id = ?')
+      .bind(e.title, e.date, e.notes, new Date().toISOString(), linked.id)
+      .run();
+  }
+
+  const { results: files } = await ctx.db
+    .prepare('SELECT id, observation_id, name, content_type, size FROM observation_files WHERE observation_id = ?')
+    .bind(before.id)
+    .all();
   await audit(ctx, '編輯公開觀課', observationLabel(o));
-  return toObservation(row, ctx.session);
+  return toObservation(row, ctx.session, files);
 });
 
 route('DELETE', '/api/observations/:id', async (ctx) => {
   requireEditor(ctx.session);
   if (ctx.body.confirmation !== '確定刪除') throw new HttpError(400, '請輸入「確定刪除」。');
   const row = await findObservation(ctx);
-  await ctx.db.prepare('UPDATE observations SET deleted_at = ? WHERE id = ?').bind(new Date().toISOString(), row.id).run();
+  const now = new Date().toISOString();
+  const { results: files } = await ctx.db
+    .prepare('SELECT kv_key FROM observation_files WHERE observation_id = ?')
+    .bind(row.id)
+    .all();
+  await ctx.db.batch([
+    ctx.db.prepare('UPDATE observations SET deleted_at = ? WHERE id = ?').bind(now, row.id),
+    // 對應的期程移到回收區（仍可復原）
+    ctx.db.prepare('UPDATE events SET deleted_at = ? WHERE observation_id = ? AND deleted_at IS NULL').bind(now, row.id),
+    ctx.db.prepare('DELETE FROM observation_files WHERE observation_id = ?').bind(row.id),
+  ]);
+  await Promise.all(files.map((f) => ctx.env.FILES.delete(f.kv_key)));
   await audit(ctx, '刪除公開觀課', observationLabel(row));
+  return { ok: true };
+});
+
+// 觀課附件：只有登入者可下載；只有填報者（或管理者）可上傳、刪除
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_FILES_PER_OBSERVATION = 10;
+const FILE_TYPES = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  odt: 'application/vnd.oasis.opendocument.text',
+  odp: 'application/vnd.oasis.opendocument.presentation',
+};
+const INLINE_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+
+const toFile = (f) => ({ id: f.id, name: f.name, size: f.size, type: f.content_type });
+
+route(
+  'POST',
+  '/api/observations/:id/files',
+  async (ctx) => {
+    requireEditor(ctx.session);
+    const obs = await findObservation(ctx);
+    let name;
+    try {
+      name = decodeURIComponent(ctx.request.headers.get('X-File-Name') || '');
+    } catch {
+      throw new HttpError(400, '檔名格式錯誤。');
+    }
+    name = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim().slice(-120);
+    const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+    const type = FILE_TYPES[ext];
+    if (!name || !type) throw new HttpError(400, '只接受 PDF、圖片（JPG、PNG、WebP）與 Office 文件。');
+    const declared = Number(ctx.request.headers.get('Content-Length') || 0);
+    if (declared > MAX_FILE_BYTES) throw new HttpError(413, '檔案不可超過 10 MB。');
+    const { count } = await ctx.db
+      .prepare('SELECT COUNT(*) AS count FROM observation_files WHERE observation_id = ?')
+      .bind(obs.id)
+      .first();
+    if (count >= MAX_FILES_PER_OBSERVATION) throw new HttpError(400, `每筆觀課最多 ${MAX_FILES_PER_OBSERVATION} 個附件。`);
+    const data = await ctx.request.arrayBuffer();
+    if (!data.byteLength) throw new HttpError(400, '檔案是空的。');
+    if (data.byteLength > MAX_FILE_BYTES) throw new HttpError(413, '檔案不可超過 10 MB。');
+
+    const key = `obs/${obs.id}/${randomToken()}`;
+    await ctx.env.FILES.put(key, data);
+    const school = ctx.session.role === 'school' ? ctx.session.member : null;
+    const row = await ctx.db
+      .prepare(
+        `INSERT INTO observation_files (observation_id, name, content_type, size, kv_key, created_by_school,
+           created_by_member_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+      )
+      .bind(obs.id, name, type, data.byteLength, key, school?.school_name ?? null, school?.id ?? null, new Date().toISOString())
+      .first();
+    await audit(ctx, '上傳觀課附件', `${observationLabel(obs)}：${name}`);
+    return toFile(row);
+  },
+  { raw: true }
+);
+
+async function findFile(ctx) {
+  const file = await ctx.db.prepare('SELECT * FROM observation_files WHERE id = ?').bind(ctx.params.id).first();
+  if (!file) throw new HttpError(404, '找不到這個附件。');
+  return file;
+}
+
+route('GET', '/api/observation-files/:id', async (ctx) => {
+  requireEditor(ctx.session);
+  const file = await findFile(ctx);
+  const body = await ctx.env.FILES.get(file.kv_key, { type: 'stream' });
+  if (!body) throw new HttpError(404, '找不到這個附件的內容。');
+  const disposition = INLINE_TYPES.has(file.content_type) ? 'inline' : 'attachment';
+  return new Response(body, {
+    headers: {
+      'Content-Type': file.content_type,
+      'Content-Length': String(file.size),
+      'Content-Disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+      'Cache-Control': 'private, no-store',
+    },
+  });
+});
+
+route('DELETE', '/api/observation-files/:id', async (ctx) => {
+  requireEditor(ctx.session);
+  const file = await findFile(ctx);
+  ctx.params.id = file.observation_id;
+  const obs = await findObservation(ctx); // 檢查是否為填報者
+  await ctx.db.prepare('DELETE FROM observation_files WHERE id = ?').bind(file.id).run();
+  await ctx.env.FILES.delete(file.kv_key);
+  await audit(ctx, '刪除觀課附件', `${observationLabel(obs)}：${file.name}`);
   return { ok: true };
 });
 
@@ -776,9 +940,12 @@ async function handleApi(ctx) {
   try {
     ctx.params = {};
     match.r.keys.forEach((k, i) => (ctx.params[k] = Number(match.m[i + 1])));
-    ctx.body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(ctx.request.method) ? await readBody(ctx.request) : {};
+    const hasBody = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(ctx.request.method) && !match.r.raw;
+    ctx.body = hasBody ? await readBody(ctx.request) : {};
     ctx.session = await getSession(ctx);
-    const res = json(200, await match.r.handler(ctx));
+    // handler 可直接回傳 Response（例如下載檔案），否則包成 JSON
+    const result = await match.r.handler(ctx);
+    const res = result instanceof Response ? result : json(200, result);
     if (ctx.setCookie) res.headers.append('Set-Cookie', ctx.setCookie);
     return res;
   } catch (err) {

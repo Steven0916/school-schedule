@@ -17,6 +17,9 @@ const state = {
   statusError: '',
   lastUpdated: '',
   filter: '全部',
+  view: savedView(), // 'list' 清單 或 'calendar' 月曆
+  calMonth: todayTaipei().slice(0, 7), // 月曆顯示的月份 YYYY-MM
+  calDay: todayTaipei(), // 月曆中選取的日期
   today: todayTaipei(),
   busyId: null,
   trashOpen: false,
@@ -92,10 +95,10 @@ function openDetail(e) {
 }
 
 // 新增／編輯期程
-function openEventForm(existing, category = '會議') {
+function openEventForm(existing, category = '會議', startDate = '') {
   const v = existing
     ? { ...existing }
-    : { title: '', category, startDate: '', endDate: '', time: '', location: '', owner: '', notes: '' };
+    : { title: '', category, startDate, endDate: '', time: '', location: '', owner: '', notes: '' };
 
   const title = h('input', { name: 'title', maxlength: 120, placeholder: '例如：教學共備會議', required: true, value: v.title });
   const cat = h(
@@ -388,6 +391,30 @@ function renderHeaderParts() {
     banner.replaceChildren(h('span', {}, '公開瀏覽 · 管理者與學校端使用各自的登入入口。'));
   }
 
+  $('view-toggle').replaceChildren(
+    ...[
+      ['list', '清單', 'list'],
+      ['calendar', '月曆', 'calendar-days'],
+    ].map(([view, label, ic]) =>
+      h(
+        'button',
+        {
+          'aria-pressed': String(state.view === view),
+          className: state.view === view ? 'filter active' : 'filter',
+          onClick: () => {
+            state.view = view;
+            try {
+              localStorage.setItem('scheduleView', view);
+            } catch {}
+            render();
+          },
+        },
+        icon(ic, 16),
+        label
+      )
+    )
+  );
+
   $('filters').replaceChildren(
     ...['全部', ...CATEGORIES].map((c) =>
       h(
@@ -403,6 +430,129 @@ function renderHeaderParts() {
         c === '全部' && icon('layout-grid', 16),
         c
       )
+    )
+  );
+}
+
+// ---------- 月曆檢視 ----------
+
+function savedView() {
+  try {
+    return localStorage.getItem('scheduleView') === 'calendar' ? 'calendar' : 'list';
+  } catch {
+    return 'list';
+  }
+}
+
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+const pad2 = (n) => String(n).padStart(2, '0');
+
+function shiftMonth(ym, delta) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
+}
+
+const eventKind = (e) => (e.completedAt ? 'completed' : endOf(e) < state.today ? 'overdue' : 'active');
+
+function calendarView() {
+  const [y, m] = state.calMonth.split('-').map(Number);
+  const firstWeekday = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  // 月曆顯示所有期程（含已完成），依目前類別篩選
+  const events = state.events.filter((e) => state.filter === '全部' || e.category === state.filter);
+  const on = (date) => events.filter((e) => e.startDate <= date && date <= endOf(e));
+
+  const go = (delta) => {
+    state.calMonth = delta === 0 ? state.today.slice(0, 7) : shiftMonth(state.calMonth, delta);
+    state.calDay = state.calMonth === state.today.slice(0, 7) ? state.today : `${state.calMonth}-01`;
+    render();
+  };
+  const select = (date) => {
+    state.calDay = date;
+    render();
+  };
+
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push(h('div', { className: 'cal-cell blank', 'aria-hidden': 'true' }));
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = `${state.calMonth}-${pad2(d)}`;
+    const dayEvents = on(date);
+    const classes = ['cal-cell'];
+    if (date === state.today) classes.push('today');
+    if (date === state.calDay) classes.push('selected');
+    const cell = h(
+      'div',
+      { className: classes.join(' ') },
+      h(
+        'button',
+        {
+          type: 'button',
+          className: 'cal-day',
+          'aria-pressed': String(date === state.calDay),
+          'aria-label': `${m} 月 ${d} 日，${dayEvents.length ? `${dayEvents.length} 筆期程` : '沒有期程'}`,
+          onClick: () => select(date),
+        },
+        String(d)
+      ),
+      dayEvents.slice(0, 3).map((e) =>
+        h(
+          'button',
+          {
+            type: 'button',
+            className: `cal-chip ${e.category}${e.completedAt ? ' done' : ''}`,
+            title: e.title,
+            onClick: (ev) => {
+              ev.stopPropagation();
+              openDetail(e);
+            },
+          },
+          e.title
+        )
+      ),
+      dayEvents.length > 3 && h('span', { className: 'cal-more' }, `+${dayEvents.length - 3} 筆`)
+    );
+    cell.addEventListener('click', () => select(date));
+    cells.push(cell);
+  }
+
+  const selectedEvents = state.calDay.startsWith(state.calMonth) ? on(state.calDay) : [];
+  const [, sm, sd] = state.calDay.split('-').map(Number);
+
+  return h(
+    'div',
+    { className: 'calendar' },
+    h(
+      'div',
+      { className: 'cal-head' },
+      h('button', { type: 'button', className: 'cal-nav', 'aria-label': '上個月', onClick: () => go(-1) }, icon('chevron-left', 18)),
+      h('h3', {}, `${y} 年 ${m} 月`),
+      h('button', { type: 'button', className: 'cal-nav', 'aria-label': '下個月', onClick: () => go(1) }, icon('chevron-right', 18)),
+      h('button', { type: 'button', className: 'text-button cal-today', onClick: () => go(0) }, '今天')
+    ),
+    h('div', { className: 'cal-grid cal-weekdays', 'aria-hidden': 'true' }, WEEKDAYS.map((w) => h('div', {}, w))),
+    h('div', { className: 'cal-grid' }, cells),
+    h(
+      'div',
+      { className: 'cal-day-panel' },
+      h('h4', {}, `${sm} 月 ${sd} 日`, h('span', {}, `${selectedEvents.length} 筆`)),
+      selectedEvents.length
+        ? h('div', { className: 'cal-day-list' }, selectedEvents.map((e) => eventRow(e, eventKind(e))))
+        : h(
+            'p',
+            { className: 'cal-empty' },
+            '這一天沒有期程。',
+            canEdit() &&
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'text-link',
+                  onClick: () => openEventForm(null, state.filter === '全部' ? '會議' : state.filter, state.calDay),
+                },
+                '新增這天的期程'
+              )
+          )
     )
   );
 }
@@ -434,9 +584,10 @@ function render() {
   renderHeaderParts();
 
   // 期程清單
-  $('schedule-count').textContent = dash ? '' : `${filtered.length} 筆`;
+  $('schedule-count').textContent = dash ? '' : `${filtered.length} 筆待處理`;
   $('last-updated').textContent = state.lastUpdated ? ` · ${state.lastUpdated}` : '';
   const list = $('schedule-list');
+  list.classList.toggle('calendar-mode', state.view === 'calendar');
   if (dash) {
     list.replaceChildren(h('div', { className: 'empty-state' }, h('p', {}, '正在載入期程…')));
   } else if (state.loadError) {
@@ -448,6 +599,8 @@ function render() {
         h('button', { className: 'text-button', onClick: () => load(true) }, '重新載入')
       )
     );
+  } else if (state.view === 'calendar') {
+    list.replaceChildren(calendarView());
   } else if (filtered.length) {
     list.replaceChildren(...filtered.map((e) => eventRow(e, endOf(e) < state.today ? 'overdue' : 'active')));
   } else {

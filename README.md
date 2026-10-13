@@ -10,6 +10,7 @@
 
 - **Cloudflare Workers**：`src/worker.js`（API 與頁面）
 - **Cloudflare D1**：資料庫（期程、學校帳號、登入狀態、操作紀錄），資料表定義在 `migrations/`
+- **Workers KV**（binding `FILES`）：觀課附件的檔案內容
 - **靜態網頁**：`public/`（`common.js` 為各頁共用的工具與左側選單；`app.js` 期程頁、`observations.js` 公開觀課頁、`team.js` 計畫成員頁）
 
 ## 修改與上線
@@ -31,6 +32,13 @@ git add . && git commit -m "說明" && git push   # 程式碼存到 GitHub
   npx wrangler secret put ADMIN_PASSWORD
   npx wrangler d1 execute school-schedule --remote --command "DELETE FROM admin; DELETE FROM sessions WHERE role='owner'"
   ```
+
+## 觀課與期程、附件、匯出
+
+- 填報公開觀課時，會自動在期程清單建立一筆「觀課計畫」（不含設計者姓名）；編輯觀課會同步更新，刪除觀課則把該期程移到回收區。使用者自行刪除的期程不會再被建回。
+- 觀課附件：PDF、圖片、Office 文件，每個最多 10 MB、每筆最多 10 個；**只有登入者可下載**，只有填報者與管理者可上傳／刪除。
+- 觀課紀錄、計畫成員頁登入後有「下載 Excel」（.xlsx，由瀏覽器產生）。
+- 期程清單可切換「清單／月曆」。
 
 ## 計畫成員
 

@@ -189,6 +189,19 @@ function render() {
     );
 
   $('team-groups').replaceChildren(...TEAM_ROLES.map(roleGroup));
+  $('intro-actions').replaceChildren(
+    canEdit()
+      ? h('button', { className: 'empty-add', disabled: !state.people.length, onClick: exportPeople }, icon('download', 16), '下載 Excel')
+      : ''
+  );
+}
+
+function exportPeople() {
+  const order = (p) => TEAM_ROLES.indexOf(p.role) * 10 + TEAM_TITLES.indexOf(p.title);
+  const rows = [...state.people]
+    .sort((a, b) => order(a) - order(b) || a.id - b.id)
+    .map((p) => [p.role, p.title || '未選身分', p.name, p.createdBySchool || '管理者']);
+  downloadXlsx(`計畫成員名單_${todayTaipei()}.xlsx`, '計畫成員', ['名單', '身分', '姓名', '學校'], rows);
 }
 
 async function init() {

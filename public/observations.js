@@ -54,6 +54,7 @@ function openRecord(o) {
         item('填報學校', o.createdBySchool || '管理者'),
         item('六大 AI 教學應用模式', h('div', { className: 'mode-chips' }, o.modes.map(modeChip)), 'event-detail-notes')
       ),
+      filesSection(o),
       o.canModify &&
         h(
           'div',
@@ -67,6 +68,162 @@ function openRecord(o) {
 }
 
 const modeChip = (m) => h('span', { className: 'mode-chip' }, m);
+
+// ---------- 附件 ----------
+
+const FILE_EXTS = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'odt', 'odp'];
+const MAX_FILE_MB = 10;
+const MAX_FILES = 10;
+const fileSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+function updateRecord(o) {
+  state.records = state.records.map((r) => (r.id === o.id ? o : r));
+  render();
+}
+
+// 詳細資訊裡的附件區；上傳／刪除後就地更新
+function filesSection(o) {
+  const box = h('section', { className: 'files-box' });
+  const status = h('p', { className: 'form-error', role: 'alert', hidden: true });
+
+  const draw = () => {
+    if (!canEdit()) {
+      box.replaceChildren(
+        h('h3', {}, icon('paperclip', 16), '附件'),
+        h('p', { className: 'files-hint' }, o.fileCount ? `共 ${o.fileCount} 個附件，登入後可查看。` : '沒有附件。')
+      );
+      return;
+    }
+    const picker = h('input', {
+      type: 'file',
+      multiple: true,
+      hidden: true,
+      accept: FILE_EXTS.map((e) => `.${e}`).join(','),
+    });
+    picker.addEventListener('change', () => upload([...picker.files]));
+    box.replaceChildren(
+      h('h3', {}, icon('paperclip', 16), '附件', h('span', {}, `${o.files.length} 個`)),
+      o.files.length
+        ? h(
+            'ul',
+            { className: 'file-list' },
+            o.files.map((f) =>
+              h(
+                'li',
+                {},
+                h(
+                  'a',
+                  { href: `/api/observation-files/${f.id}`, target: '_blank', rel: 'noopener' },
+                  icon('download', 15),
+                  h('span', {}, f.name)
+                ),
+                h('small', {}, fileSize(f.size)),
+                o.canModify &&
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'delete-button',
+                      title: '刪除附件',
+                      'aria-label': `刪除附件 ${f.name}`,
+                      onClick: () => removeFile(f),
+                    },
+                    icon('trash', 15)
+                  )
+              )
+            )
+          )
+        : h('p', { className: 'files-hint' }, '尚未上傳附件。'),
+      o.canModify &&
+        h(
+          'div',
+          { className: 'files-upload' },
+          picker,
+          h(
+            'button',
+            { type: 'button', className: 'empty-add', disabled: o.files.length >= MAX_FILES, onClick: () => picker.click() },
+            icon('upload', 16),
+            '上傳附件'
+          ),
+          h('small', {}, `PDF、圖片、Office 文件，每個最多 ${MAX_FILE_MB} MB，最多 ${MAX_FILES} 個。只有登入者看得到附件。`)
+        ),
+      status
+    );
+  };
+
+  async function upload(files) {
+    setError(status, '');
+    for (const file of files) {
+      const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+      if (!FILE_EXTS.includes(ext)) {
+        setError(status, `「${file.name}」格式不支援。只接受 PDF、圖片與 Office 文件。`);
+        continue;
+      }
+      if (file.size > MAX_FILE_MB * 1048576) {
+        setError(status, `「${file.name}」超過 ${MAX_FILE_MB} MB。`);
+        continue;
+      }
+      if (o.files.length >= MAX_FILES) {
+        setError(status, `每筆觀課最多 ${MAX_FILES} 個附件。`);
+        break;
+      }
+      box.querySelector('.files-upload button').textContent = `上傳中：${file.name}…`;
+      try {
+        const res = await fetch(`/api/observations/${o.id}/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
+          body: file,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '上傳失敗，請稍後重試。');
+        o = { ...o, files: [...o.files, data], fileCount: o.fileCount + 1 };
+        updateRecord(o);
+      } catch (err) {
+        setError(status, `「${file.name}」：${err.message}`);
+      }
+    }
+    const msg = status.hidden ? '' : status.textContent;
+    draw();
+    setError(status, msg);
+  }
+
+  async function removeFile(f) {
+    setError(status, '');
+    try {
+      await api(`/api/observation-files/${f.id}`, { method: 'DELETE' });
+      o = { ...o, files: o.files.filter((x) => x.id !== f.id), fileCount: o.fileCount - 1 };
+      updateRecord(o);
+      draw();
+      notify(`已刪除附件 ${f.name}`);
+    } catch (err) {
+      setError(status, err.message);
+    }
+  }
+
+  draw();
+  return box;
+}
+
+// ---------- 匯出 Excel ----------
+
+function exportRecords() {
+  const rows = state.records.map((o) => [
+    o.date,
+    o.createdBySchool || '管理者',
+    o.subject,
+    o.designer,
+    gradeLabel(o.grade),
+    o.className,
+    o.students,
+    o.periods,
+    o.minutes,
+    o.unit,
+    ...AI_MODES.map((m) => (o.modes.includes(m) ? '✓' : '')),
+    o.fileCount,
+  ]);
+  const headers = ['日期', '填報學校', '領域/科目', '設計者', '年級', '班級', '人數', '總節數', '每節分鐘', '單元名稱', ...AI_MODES, '附件數'];
+  downloadXlsx(`公開觀課紀錄_${todayTaipei()}.xlsx`, '公開觀課紀錄', headers, rows);
+}
 
 // ---------- 填報表單 ----------
 
@@ -170,7 +327,9 @@ function openRecordForm(existing) {
         : [...state.records, saved].sort(byObsDate);
       closeModal();
       render();
-      notify(existing ? '已更新觀課資料' : '已送出填報');
+      notify(existing ? '已更新觀課資料' : '已送出填報，並已加入期程清單');
+      // 新填報的直接打開詳細資訊，方便接著上傳附件
+      if (!existing) openRecord(saved);
     } catch (err) {
       modalBusy = false;
       submit.disabled = cancel.disabled = false;
@@ -240,7 +399,8 @@ function recordRow(o) {
         h('span', {}, h('strong', {}, '設計者'), o.designer),
         h('span', {}, h('strong', {}, '班級'), classLabel(o)),
         h('span', {}, h('strong', {}, '節數'), periodLabel(o)),
-        o.createdBySchool && h('span', {}, h('strong', {}, '學校'), o.createdBySchool)
+        o.createdBySchool && h('span', {}, h('strong', {}, '學校'), o.createdBySchool),
+        o.fileCount > 0 && h('span', { className: 'file-count' }, icon('paperclip', 14), `${o.fileCount} 個附件`)
       )
     ),
     o.canModify &&
@@ -262,7 +422,17 @@ function render() {
 
   $('intro-actions').replaceChildren(
     canEdit()
-      ? h('button', { className: 'add-button', onClick: () => openRecordForm(null) }, icon('plus', 19), '填報公開觀課')
+      ? h(
+          'div',
+          { className: 'login-links' },
+          h('button', { className: 'add-button', onClick: () => openRecordForm(null) }, icon('plus', 19), '填報公開觀課'),
+          h(
+            'button',
+            { className: 'empty-add', disabled: !state.records.length, onClick: exportRecords },
+            icon('download', 16),
+            '下載 Excel'
+          )
+        )
       : h(
           'div',
           { className: 'login-links' },
