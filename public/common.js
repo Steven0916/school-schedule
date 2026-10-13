@@ -204,71 +204,32 @@ function mountSideNav() {
   };
   markCurrent();
   window.addEventListener('hashchange', markCurrent);
-  // 選單平時收起，按頁首的「選單」按鈕才從左側滑出
-  const toggle = h(
-    'button',
-    { type: 'button', className: 'menu-button', 'aria-controls': 'side-nav', 'aria-expanded': 'false' },
-    icon('menu', 20),
-    h('span', {}, '選單')
-  );
-  const closeBtn = h('button', { type: 'button', className: 'side-nav-close', 'aria-label': '關閉選單' }, icon('x', 18));
+  // 選單固定顯示：電腦在左側，手機在頂端（可左右滑動）
   const nav = h(
     'nav',
-    { id: 'side-nav', className: 'side-nav', 'aria-label': '主選單', inert: true },
-    h('div', { className: 'side-nav-top' }, h('p', { className: 'side-nav-title' }, '選單'), closeBtn),
+    { id: 'side-nav', className: 'side-nav', 'aria-label': '主選單' },
+    h('p', { className: 'side-nav-title' }, '選單'),
     links.map((l) => l.el)
   );
-  const backdrop = h('div', { className: 'side-nav-backdrop', hidden: true });
 
-  // 往下捲動後，左下角浮動按鈕：開選單、回到最上方
-  const floatMenu = h(
-    'button',
-    { type: 'button', className: 'float-button', 'aria-controls': 'side-nav', 'aria-expanded': 'false' },
-    icon('menu', 18),
-    h('span', {}, '選單')
-  );
+  // 往下捲動後，左下角顯示「回到最上方」
   const toTop = h('button', { type: 'button', className: 'float-button' }, icon('arrow-up', 18), h('span', {}, '最上方'));
-  const floatBar = h('div', { className: 'float-actions' }, floatMenu, toTop);
-  const toggles = [toggle, floatMenu];
-  let lastToggle = toggle;
-
-  const setOpen = (open) => {
-    nav.classList.toggle('open', open);
-    nav.inert = !open;
-    backdrop.hidden = !open;
-    for (const t of toggles) t.setAttribute('aria-expanded', String(open));
-    if (open) (nav.querySelector('[aria-current=page]') || links[0].el).focus();
-  };
-  const closeAndReturnFocus = () => {
-    setOpen(false);
-    lastToggle.focus();
-  };
-  for (const t of toggles) {
-    t.addEventListener('click', () => {
-      lastToggle = t;
-      setOpen(!nav.classList.contains('open'));
-    });
-  }
-  closeBtn.addEventListener('click', closeAndReturnFocus);
-  backdrop.addEventListener('click', () => setOpen(false));
-  for (const l of links) l.el.addEventListener('click', () => setOpen(false));
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && nav.classList.contains('open')) closeAndReturnFocus();
-  });
-
+  const floatBar = h('div', { className: 'float-actions' }, toTop);
   toTop.addEventListener('click', () => {
     const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
-    toggle.focus({ preventScroll: true });
+    (nav.querySelector('[aria-current=page]') || links[0].el).focus({ preventScroll: true });
   });
-  // 頁首的「選單」按鈕捲出畫面後才顯示浮動按鈕
   const updateFloat = () => floatBar.classList.toggle('visible', window.scrollY > 200);
   window.addEventListener('scroll', updateFloat, { passive: true });
 
-  document.body.prepend(nav, backdrop);
+  document.body.prepend(nav);
   document.body.append(floatBar);
-  document.querySelector('.header')?.prepend(toggle);
+  document.body.classList.add('has-side-nav');
   updateFloat();
+  // 手機版為橫向捲動，讓目前頁面的連結露出來
+  const current = nav.querySelector('[aria-current=page]');
+  if (current && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = current.offsetLeft - 16;
 }
 
 mountSideNav();
