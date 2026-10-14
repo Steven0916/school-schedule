@@ -6,6 +6,7 @@ const TEAM_ROLES = ['總召', '副總召', '計畫主持人', '協同主持人']
 const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
 const KNOWN_SCHOOLS = ['石榴國中', '東榮國中', '永慶高中'];
 const TEAM_COUNTIES = ['雲林縣', '嘉義縣'];
+const SPLIT_ROLE = '計畫主持人'; // 這份名單的雲林縣、嘉義縣分左右兩欄
 
 const state = {
   role: 'viewer',
@@ -175,7 +176,31 @@ function roleGroup(role) {
   let body;
   if (state.loading) body = h('div', { className: 'trash-empty' }, '正在載入…');
   else if (state.loadError) body = h('div', { className: 'trash-empty' }, state.loadError);
-  else if (!people.length) body = h('div', { className: 'trash-empty' }, '尚未新增名單。');
+  else if (role === SPLIT_ROLE) {
+    // 計畫主持人：雲林縣、嘉義縣左右兩欄，未選縣市的放在下方
+    const column = (c) => {
+      const group = people.filter((p) => p.county === c);
+      return h(
+        'div',
+        { className: 'county-group' },
+        h('h3', { className: 'county-title' }, c),
+        group.length
+          ? h('ul', { className: 'team-list' }, group.map((p) => personItem(p, role)))
+          : h('p', { className: 'county-empty' }, '尚無')
+      );
+    };
+    const unassigned = people.filter((p) => !TEAM_COUNTIES.includes(p.county));
+    body = [
+      h('div', { className: 'county-columns' }, TEAM_COUNTIES.map(column)),
+      unassigned.length &&
+        h(
+          'div',
+          { className: 'county-group' },
+          h('h3', { className: 'county-title missing' }, '未選縣市'),
+          h('ul', { className: 'team-list' }, unassigned.map((p) => personItem(p, role)))
+        ),
+    ];
+  } else if (!people.length) body = h('div', { className: 'trash-empty' }, '尚未新增名單。');
   else
     body = [...TEAM_COUNTIES, ''].map((c) => {
       const group = people.filter((p) => (p.county || '') === c);

@@ -454,3 +454,10 @@ body.has-side-nav .float-actions{left:250px}
 .county-group+.county-group{margin-top:14px}
 .county-title{color:#123e63;background:#eef5f9;border-radius:7px;align-items:baseline;gap:8px;margin:0 0 4px;padding:6px 10px;font-size:14px;display:flex}
 .county-title.missing{color:#a66a17;background:#fff2dd}
+/* 計畫主持人：雲林縣、嘉義縣左右兩欄 */
+.county-columns{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;display:grid}
+.county-columns+.county-group{margin-top:14px}
+.county-columns .team-list li{flex-wrap:wrap;gap:6px 10px}
+.county-empty{color:#8195a1;margin:0;padding:10px 4px;font-size:14px}
+@media (max-width:600px){.county-columns{grid-template-columns:1fr}}
+.county-columns .county-group{margin-top:0!important}
