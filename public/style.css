@@ -446,3 +446,5 @@ footer{padding-bottom:80px}
 .login-links .empty-add:disabled,.intro .empty-add:disabled{opacity:.55;cursor:not-allowed}
 body.has-side-nav .float-actions{left:250px}
 @media (max-width:900px){body.has-side-nav .float-actions{left:16px}}
+.empty-add{white-space:nowrap}
+#intro-actions{flex:none}
