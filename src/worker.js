@@ -864,16 +864,44 @@ function normalizeTeamMember(body) {
   };
 }
 
-async function findTeamMember(ctx) {
-  const row = await ctx.db.prepare('SELECT * FROM team_members WHERE id = ?').bind(ctx.params.id).first();
+// deleted：true 時找回收區裡的名單
+async function findTeamMember(ctx, { deleted = false } = {}) {
+  const row = await ctx.db
+    .prepare(`SELECT * FROM team_members WHERE id = ? AND deleted_at IS ${deleted ? 'NOT NULL' : 'NULL'}`)
+    .bind(ctx.params.id)
+    .first();
   if (!row) throw new HttpError(404, '找不到這筆名單。');
   if (!canDeleteEvent(row, ctx.session)) throw new HttpError(403, '只能修改自己新增的名單。');
   return row;
 }
 
 route('GET', '/api/team', async (ctx) => {
-  const { results } = await ctx.db.prepare('SELECT * FROM team_members ORDER BY id').all();
+  const { results } = await ctx.db.prepare('SELECT * FROM team_members WHERE deleted_at IS NULL ORDER BY id').all();
   return results.map((r) => toTeamMember(r, ctx.session));
+});
+
+// 回收區：管理者看全部，學校端只看自己刪除（新增）的
+route('GET', '/api/team/trash', async (ctx) => {
+  requireEditor(ctx.session);
+  const stmt =
+    ctx.session.role === 'owner'
+      ? ctx.db.prepare('SELECT * FROM team_members WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC')
+      : ctx.db
+          .prepare('SELECT * FROM team_members WHERE deleted_at IS NOT NULL AND created_by_member_id = ? ORDER BY deleted_at DESC')
+          .bind(ctx.session.member.id);
+  const { results } = await stmt.all();
+  return results.map((r) => ({ ...toTeamMember(r, ctx.session), deletedAt: r.deleted_at }));
+});
+
+route('POST', '/api/team/:id/restore', async (ctx) => {
+  requireEditor(ctx.session);
+  const row = await findTeamMember(ctx, { deleted: true });
+  const restored = await ctx.db
+    .prepare('UPDATE team_members SET deleted_at = NULL WHERE id = ? RETURNING *')
+    .bind(row.id)
+    .first();
+  await audit(ctx, `復原${row.role}`, row.name);
+  return toTeamMember(restored, ctx.session);
 });
 
 route('POST', '/api/team', async (ctx) => {
@@ -907,8 +935,8 @@ route('PUT', '/api/team/:id', async (ctx) => {
 route('DELETE', '/api/team/:id', async (ctx) => {
   requireEditor(ctx.session);
   const row = await findTeamMember(ctx);
-  await ctx.db.prepare('DELETE FROM team_members WHERE id = ?').bind(row.id).run();
-  await audit(ctx, `刪除${row.role}`, row.name);
+  await ctx.db.prepare('UPDATE team_members SET deleted_at = ? WHERE id = ?').bind(new Date().toISOString(), row.id).run();
+  await audit(ctx, `刪除${row.role}（移至回收區）`, row.name);
   return { ok: true };
 });
 

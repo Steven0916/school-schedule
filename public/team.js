@@ -13,6 +13,8 @@ const state = {
   schoolName: '',
   username: '',
   people: [],
+  trash: [],
+  trashOpen: false,
   loading: true,
   loadError: '',
 };
@@ -21,7 +23,12 @@ const canEdit = () => state.role !== 'viewer';
 
 async function load() {
   try {
-    state.people = await api('/api/team');
+    const [people, trash] = await Promise.all([
+      api('/api/team'),
+      canEdit() ? api('/api/team/trash') : Promise.resolve([]),
+    ]);
+    state.people = people;
+    state.trash = trash;
     state.loadError = '';
   } catch (err) {
     state.loadError = err.message;
@@ -109,9 +116,10 @@ function openRemovePerson(p) {
     try {
       await api(`/api/team/${p.id}`, { method: 'DELETE' });
       state.people = state.people.filter((x) => x.id !== p.id);
+      state.trash = [{ ...p, deletedAt: new Date().toISOString() }, ...state.trash];
       closeModal();
       render();
-      notify('已從名單移除');
+      notify('已移至回收區，可隨時復原');
     } catch (err) {
       modalBusy = false;
       confirm.disabled = cancel.disabled = false;
@@ -120,7 +128,7 @@ function openRemovePerson(p) {
   });
   openModal(
     `從${p.role}名單移除？`,
-    `「${p.name}」將從名單中移除。`,
+    `「${p.name}」會移至頁面下方的回收區，之後仍可復原。`,
     h('div', {}, error, h('div', { className: 'modal-actions' }, cancel, confirm))
   );
 }
@@ -132,6 +140,47 @@ async function logout() {
   } catch (err) {
     notify(err.message || '登出失敗');
   }
+}
+
+const titleRank = (p) => (TEAM_TITLES.includes(p.title) ? TEAM_TITLES.indexOf(p.title) : TEAM_TITLES.length);
+const byTitle = (a, b) =>
+  titleRank(a) - titleRank(b) || (a.school || '').localeCompare(b.school || '', 'zh-Hant') || a.id - b.id;
+
+async function restorePerson(p) {
+  try {
+    const restored = await api(`/api/team/${p.id}/restore`, { method: 'POST' });
+    state.trash = state.trash.filter((x) => x.id !== p.id);
+    state.people = [...state.people, restored];
+    render();
+    notify(`已復原 ${restored.name}`);
+  } catch (err) {
+    notify(err.message);
+  }
+}
+
+function trashSection() {
+  const details = h(
+    'details',
+    { open: state.trashOpen },
+    h('summary', {}, '回收區 ', h('span', {}, `${state.trash.length} 筆`)),
+    h('p', {}, state.role === 'owner' ? '已刪除的名單可在這裡復原。' : '您刪除的名單可在這裡復原。'),
+    state.trash.length
+      ? h(
+          'div',
+          { className: 'list' },
+          state.trash.map((p) =>
+            h(
+              'div',
+              { className: 'trash-row' },
+              h('div', {}, h('strong', {}, p.name), h('span', {}, [p.role, p.county, p.title, p.school].filter(Boolean).join(' · '))),
+              h('button', { className: 'restore-button', onClick: () => restorePerson(p) }, icon('rotate-ccw', 15), '復原')
+            )
+          )
+        )
+      : h('div', { className: 'trash-empty' }, '目前沒有已刪除的名單。')
+  );
+  details.addEventListener('toggle', () => (state.trashOpen = details.open));
+  return details;
 }
 
 function personItem(p, role) {
@@ -172,7 +221,7 @@ function personItem(p, role) {
 }
 
 function roleGroup(role) {
-  const people = state.people.filter((p) => p.role === role);
+  const people = state.people.filter((p) => p.role === role).sort(byTitle);
   let body;
   if (state.loading) body = h('div', { className: 'trash-empty' }, '正在載入…');
   else if (state.loadError) body = h('div', { className: 'trash-empty' }, state.loadError);
@@ -238,6 +287,9 @@ function render() {
     );
 
   $('team-groups').replaceChildren(...TEAM_ROLES.map(roleGroup));
+  const trash = $('team-trash');
+  trash.hidden = !canEdit();
+  if (canEdit()) trash.replaceChildren(trashSection());
   $('intro-actions').replaceChildren(
     canEdit()
       ? h('button', { className: 'empty-add', disabled: !state.people.length, onClick: exportPeople }, icon('download', 16), '下載 Excel')
