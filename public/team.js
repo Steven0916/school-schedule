@@ -183,7 +183,7 @@ function roleGroup(role) {
       return h(
         'div',
         { className: 'county-group' },
-        h('h3', { className: c ? 'county-title' : 'county-title missing' }, c || '未選縣市', h('span', {}, `${group.length} 人`)),
+        h('h3', { className: c ? 'county-title' : 'county-title missing' }, c || '未選縣市'),
         h('ul', { className: 'team-list' }, group.map((p) => personItem(p, role)))
       );
     });
