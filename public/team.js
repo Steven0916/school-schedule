@@ -6,7 +6,7 @@ const TEAM_ROLES = ['總召', '副總召', '計畫主持人', '協同主持人']
 const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
 const KNOWN_SCHOOLS = ['石榴國中', '東榮國中', '永慶高中'];
 const TEAM_COUNTIES = ['雲林縣', '嘉義縣'];
-const SPLIT_ROLE = '計畫主持人'; // 這份名單的雲林縣、嘉義縣分左右兩欄
+const SPLIT_ROLES = ['計畫主持人', '協同主持人']; // 這些名單的雲林縣、嘉義縣分左右兩欄
 
 const state = {
   role: 'viewer',
@@ -176,8 +176,8 @@ function roleGroup(role) {
   let body;
   if (state.loading) body = h('div', { className: 'trash-empty' }, '正在載入…');
   else if (state.loadError) body = h('div', { className: 'trash-empty' }, state.loadError);
-  else if (role === SPLIT_ROLE) {
-    // 計畫主持人：雲林縣、嘉義縣左右兩欄，未選縣市的放在下方
+  else if (SPLIT_ROLES.includes(role)) {
+    // 雲林縣、嘉義縣左右兩欄，未選縣市的放在下方
     const column = (c) => {
       const group = people.filter((p) => p.county === c);
       return h(
