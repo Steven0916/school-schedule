@@ -5,6 +5,7 @@
 const TEAM_ROLES = ['總召', '副總召', '計畫主持人', '協同主持人'];
 const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
 const KNOWN_SCHOOLS = ['石榴國中', '東榮國中', '永慶高中'];
+const TEAM_COUNTIES = ['雲林縣', '嘉義縣'];
 
 const state = {
   role: 'viewer',
@@ -38,6 +39,7 @@ function openPersonForm(role, existing = null) {
       h('option', { value: '' }, '請選擇'),
       options.map((o) => h('option', { value: o }, o))
     );
+  const county = select('縣市', TEAM_COUNTIES, existing?.county || '');
   const title = select('身分', TEAM_TITLES, existing?.title || '');
   const listSelect = select('名單', TEAM_ROLES, role);
   const name = h('input', { required: true, maxlength: 40, placeholder: '例如：王小明', autocomplete: 'off', value: existing?.name || '' });
@@ -59,6 +61,7 @@ function openPersonForm(role, existing = null) {
     'form',
     { className: 'login-form' },
     existing && h('label', {}, '名單', listSelect),
+    h('label', {}, '縣市', county),
     h('label', {}, '身分', title),
     h('label', {}, '姓名', name),
     h('label', {}, '服務學校', school, schoolList),
@@ -70,7 +73,7 @@ function openPersonForm(role, existing = null) {
     modalBusy = true;
     save.disabled = cancel.disabled = true;
     try {
-      const body = { role: existing ? listSelect.value : role, title: title.value, name: name.value, school: school.value };
+      const body = { role: existing ? listSelect.value : role, title: title.value, name: name.value, school: school.value, county: county.value };
       const person = await api(existing ? `/api/team/${existing.id}` : '/api/team', {
         method: existing ? 'PUT' : 'POST',
         body,
@@ -89,7 +92,7 @@ function openPersonForm(role, existing = null) {
   });
   openModal(
     existing ? `編輯${existing.role}` : `新增${role}`,
-    existing ? '修改身分、姓名或服務學校；若放錯名單，可在「名單」改到另一邊。' : '選擇身分、輸入姓名與服務學校後加入名單。',
+    existing ? '修改縣市、身分、姓名或服務學校；若放錯名單，可在「名單」改到另一邊。' : '選擇縣市與身分、輸入姓名與服務學校後加入名單。',
     form
   );
   (existing ? name : title).focus();
@@ -130,6 +133,43 @@ async function logout() {
   }
 }
 
+function personItem(p, role) {
+  const missing = (text) => h('span', { className: 'title-missing' }, text);
+  return h(
+    'li',
+    {},
+    h(
+      'div',
+      {},
+      h('strong', {}, p.name),
+      p.title ? h('span', { className: 'title-tag' }, p.title) : missing('未選身分'),
+      p.school ? h('span', { className: 'school-name' }, p.school) : missing('未填服務學校')
+    ),
+    p.canModify &&
+      h(
+        'div',
+        { className: 'team-actions' },
+        h(
+          'button',
+          { type: 'button', className: 'edit-button', 'aria-label': `編輯 ${p.name}`, onClick: () => openPersonForm(role, p) },
+          icon('pencil', 15),
+          h('span', {}, '編輯')
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'delete-button',
+            title: '從名單移除',
+            'aria-label': `將 ${p.name} 從${role}名單移除`,
+            onClick: () => openRemovePerson(p),
+          },
+          icon('trash', 17)
+        )
+      )
+  );
+}
+
 function roleGroup(role) {
   const people = state.people.filter((p) => p.role === role);
   let body;
@@ -137,45 +177,16 @@ function roleGroup(role) {
   else if (state.loadError) body = h('div', { className: 'trash-empty' }, state.loadError);
   else if (!people.length) body = h('div', { className: 'trash-empty' }, '尚未新增名單。');
   else
-    body = h(
-      'ul',
-      { className: 'team-list' },
-      people.map((p) =>
-        h(
-          'li',
-          {},
-          h(
-            'div',
-            {},
-            h('strong', {}, p.name),
-            p.title ? h('span', { className: 'title-tag' }, p.title) : h('span', { className: 'title-missing' }, '未選身分'),
-            p.school ? h('span', { className: 'school-name' }, p.school) : h('span', { className: 'title-missing' }, '未填服務學校')
-          ),
-          p.canModify &&
-            h(
-              'div',
-              { className: 'team-actions' },
-              h(
-                'button',
-                { type: 'button', className: 'edit-button', 'aria-label': `編輯 ${p.name}`, onClick: () => openPersonForm(role, p) },
-                icon('pencil', 15),
-                h('span', {}, '編輯')
-              ),
-              h(
-                'button',
-                {
-                  type: 'button',
-                  className: 'delete-button',
-                  title: '從名單移除',
-                  'aria-label': `將 ${p.name} 從${role}名單移除`,
-                  onClick: () => openRemovePerson(p),
-                },
-                icon('trash', 17)
-              )
-            )
-        )
-      )
-    );
+    body = [...TEAM_COUNTIES, ''].map((c) => {
+      const group = people.filter((p) => (p.county || '') === c);
+      if (!group.length) return null;
+      return h(
+        'div',
+        { className: 'county-group' },
+        h('h3', { className: c ? 'county-title' : 'county-title missing' }, c || '未選縣市', h('span', {}, `${group.length} 人`)),
+        h('ul', { className: 'team-list' }, group.map((p) => personItem(p, role)))
+      );
+    });
 
   return h(
     'section',
@@ -210,11 +221,12 @@ function render() {
 }
 
 function exportPeople() {
-  const order = (p) => TEAM_ROLES.indexOf(p.role) * 10 + TEAM_TITLES.indexOf(p.title);
+  const countyOrder = (p) => (TEAM_COUNTIES.includes(p.county) ? TEAM_COUNTIES.indexOf(p.county) : 9);
+  const order = (p) => TEAM_ROLES.indexOf(p.role) * 100 + countyOrder(p) * 10 + TEAM_TITLES.indexOf(p.title);
   const rows = [...state.people]
     .sort((a, b) => order(a) - order(b) || a.id - b.id)
-    .map((p) => [p.role, p.title || '未選身分', p.name, p.school || '未填', p.createdBySchool || '管理者']);
-  downloadXlsx(`計畫成員名單_${todayTaipei()}.xlsx`, '計畫成員', ['名單', '身分', '姓名', '服務學校', '新增者'], rows);
+    .map((p) => [p.role, p.county || '未選', p.title || '未選身分', p.name, p.school || '未填', p.createdBySchool || '管理者']);
+  downloadXlsx(`計畫成員名單_${todayTaipei()}.xlsx`, '計畫成員', ['名單', '縣市', '身分', '姓名', '服務學校', '新增者'], rows);
 }
 
 async function init() {

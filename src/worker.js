@@ -5,6 +5,7 @@ const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中
 const GRADES = [7, 8, 9];
 const TEAM_ROLES = ['總召', '副總召', '計畫主持人', '協同主持人'];
 const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
+const TEAM_COUNTIES = ['雲林縣', '嘉義縣'];
 const AI_MODES = ['AI備課', 'AI教學', 'AI評量', 'AI協作', 'AI創作', 'AI探究'];
 const SCHOOL_PASSWORD_MIN = 6;
 const USERNAME_RE = /^[a-zA-Z0-9._-]{3,40}$/;
@@ -845,6 +846,7 @@ const toTeamMember = (row, session) => ({
   name: session ? row.name : maskName(row.name),
   title: row.title || '',
   school: row.school || '',
+  county: row.county || '',
   createdBySchool: row.created_by_school || null,
   canModify: canDeleteEvent(row, session),
 });
@@ -852,11 +854,13 @@ const toTeamMember = (row, session) => ({
 function normalizeTeamMember(body) {
   if (!TEAM_ROLES.includes(body.role)) throw new HttpError(400, '名單類別不正確。');
   if (!TEAM_TITLES.includes(body.title)) throw new HttpError(400, '請選擇身分（校長、主任、組長、教師、職員）。');
+  if (!TEAM_COUNTIES.includes(body.county)) throw new HttpError(400, '請選擇縣市（雲林縣或嘉義縣）。');
   return {
     role: body.role,
     title: body.title,
     name: requiredString(body.name, 40, '姓名'),
     school: requiredString(body.school, 40, '服務學校'),
+    county: body.county,
   };
 }
 
@@ -878,12 +882,12 @@ route('POST', '/api/team', async (ctx) => {
   const school = ctx.session.role === 'school' ? ctx.session.member : null;
   const row = await ctx.db
     .prepare(
-      `INSERT INTO team_members (role, name, title, school, created_by_school, created_by_member_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`
+      `INSERT INTO team_members (role, name, title, school, county, created_by_school, created_by_member_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
     )
-    .bind(p.role, p.name, p.title, p.school, school?.school_name ?? null, school?.id ?? null, new Date().toISOString())
+    .bind(p.role, p.name, p.title, p.school, p.county, school?.school_name ?? null, school?.id ?? null, new Date().toISOString())
     .first();
-  await audit(ctx, `新增${p.role}`, `${p.name}（${p.title}，${p.school}）`);
+  await audit(ctx, `新增${p.role}`, `${p.name}（${p.county}，${p.title}，${p.school}）`);
   return toTeamMember(row, ctx.session);
 });
 
@@ -892,11 +896,11 @@ route('PUT', '/api/team/:id', async (ctx) => {
   const before = await findTeamMember(ctx);
   const p = normalizeTeamMember(ctx.body);
   const row = await ctx.db
-    .prepare('UPDATE team_members SET role = ?, name = ?, title = ?, school = ? WHERE id = ? RETURNING *')
-    .bind(p.role, p.name, p.title, p.school, before.id)
+    .prepare('UPDATE team_members SET role = ?, name = ?, title = ?, school = ?, county = ? WHERE id = ? RETURNING *')
+    .bind(p.role, p.name, p.title, p.school, p.county, before.id)
     .first();
   const moved = before.role !== p.role ? `，${before.role} → ${p.role}` : '';
-  await audit(ctx, '編輯計畫成員', `${before.name} → ${p.name}（${p.title}，${p.school}）${moved}`);
+  await audit(ctx, '編輯計畫成員', `${before.name} → ${p.name}（${p.county}，${p.title}，${p.school}）${moved}`);
   return toTeamMember(row, ctx.session);
 });
 

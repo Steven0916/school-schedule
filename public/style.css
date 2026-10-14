@@ -449,3 +449,9 @@ body.has-side-nav .float-actions{left:250px}
 .empty-add{white-space:nowrap}
 #intro-actions{flex:none}
 .team-list .school-name{color:#45657a;font-size:13px;font-weight:700}
+
+/* 計畫成員：依縣市分組 */
+.county-group+.county-group{margin-top:14px}
+.county-title{color:#123e63;background:#eef5f9;border-radius:7px;align-items:baseline;gap:8px;margin:0 0 4px;padding:6px 10px;font-size:14px;display:flex}
+.county-title span{color:#6a8190;font-size:12px;font-weight:500}
+.county-title.missing{color:#a66a17;background:#fff2dd}
