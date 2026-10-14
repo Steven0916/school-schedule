@@ -65,6 +65,15 @@ function openPersonForm(role, existing = null) {
   const error = h('p', { className: 'form-error', role: 'alert', hidden: true });
   const cancel = h('button', { type: 'button', className: 'cancel-button', onClick: closeModal }, '取消');
   const save = h('button', { type: 'submit', className: 'submit-button' }, existing ? '儲存' : '加入名單');
+  // 同名不同校時，伺服器要求使用者再確認一次
+  let confirmDuplicate = false;
+  const resetDuplicate = () => {
+    if (!confirmDuplicate) return;
+    confirmDuplicate = false;
+    save.textContent = existing ? '儲存' : '加入名單';
+    setError(error, '');
+  };
+  for (const el of [name, school, listSelect]) el.addEventListener('input', resetDuplicate);
   const form = h(
     'form',
     { className: 'login-form' },
@@ -82,6 +91,7 @@ function openPersonForm(role, existing = null) {
     save.disabled = cancel.disabled = true;
     try {
       const body = { role: existing ? listSelect.value : role, title: title.value, name: name.value, school: school.value, county: county.value };
+      if (confirmDuplicate) body.confirmDuplicate = true;
       const person = await api(existing ? `/api/team/${existing.id}` : '/api/team', {
         method: existing ? 'PUT' : 'POST',
         body,
@@ -96,6 +106,10 @@ function openPersonForm(role, existing = null) {
       modalBusy = false;
       save.disabled = cancel.disabled = false;
       setError(error, err.message);
+      if (err.data?.duplicate) {
+        confirmDuplicate = true;
+        save.textContent = '確定是不同人，仍要加入';
+      }
     }
   });
   openModal(

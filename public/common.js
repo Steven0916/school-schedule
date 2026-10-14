@@ -72,7 +72,12 @@ async function api(url, options = {}) {
   }
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || '操作失敗，請稍後重試。');
+  if (!res.ok) {
+    const err = new Error(data.error || '操作失敗，請稍後重試。');
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
   return data;
 }
 

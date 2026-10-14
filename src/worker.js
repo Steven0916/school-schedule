@@ -15,9 +15,10 @@ const COOKIE_NAME = 'sid';
 const PBKDF2_ITERATIONS = 50000;
 
 class HttpError extends Error {
-  constructor(status, message) {
+  constructor(status, message, extra = {}) {
     super(message);
     this.status = status;
+    this.extra = extra;
   }
 }
 
@@ -875,6 +876,28 @@ async function findTeamMember(ctx, { deleted = false } = {}) {
   return row;
 }
 
+// 同一份名單：同名同校直接擋下；同名不同校需使用者確認（confirmDuplicate）。比對時忽略空白。
+// before：編輯前的資料；姓名與名單都沒變時不再詢問同名不同校
+async function checkDuplicate(ctx, p, excludeId = 0, before = null) {
+  const norm = (v) => String(v || '').replace(/\s+/g, '');
+  const { results } = await ctx.db
+    .prepare('SELECT name, school FROM team_members WHERE role = ? AND deleted_at IS NULL AND id != ?')
+    .bind(p.role, excludeId)
+    .all();
+  const sameName = results.filter((r) => norm(r.name) === norm(p.name));
+  if (!sameName.length) return;
+  if (sameName.some((r) => norm(r.school) === norm(p.school))) {
+    throw new HttpError(409, `「${p.name}」（${p.school}）已在${p.role}名單中，不需要重複加入。`);
+  }
+  const unchanged = before && norm(before.name) === norm(p.name) && before.role === p.role;
+  if (!ctx.body.confirmDuplicate && !unchanged) {
+    const schools = [...new Set(sameName.map((r) => r.school || '未填服務學校'))].join('、');
+    throw new HttpError(409, `${p.role}名單中已有同名的「${p.name}」（${schools}）。若是不同的人，請再按一次確認加入。`, {
+      duplicate: true,
+    });
+  }
+}
+
 route('GET', '/api/team', async (ctx) => {
   const { results } = await ctx.db.prepare('SELECT * FROM team_members WHERE deleted_at IS NULL ORDER BY id').all();
   return results.map((r) => toTeamMember(r, ctx.session));
@@ -896,6 +919,8 @@ route('GET', '/api/team/trash', async (ctx) => {
 route('POST', '/api/team/:id/restore', async (ctx) => {
   requireEditor(ctx.session);
   const row = await findTeamMember(ctx, { deleted: true });
+  // 名單上已有同名同校的人就不復原（同名不同校則允許）
+  await checkDuplicate({ ...ctx, body: { confirmDuplicate: true } }, row, row.id);
   const restored = await ctx.db
     .prepare('UPDATE team_members SET deleted_at = NULL WHERE id = ? RETURNING *')
     .bind(row.id)
@@ -907,6 +932,7 @@ route('POST', '/api/team/:id/restore', async (ctx) => {
 route('POST', '/api/team', async (ctx) => {
   requireEditor(ctx.session);
   const p = normalizeTeamMember(ctx.body);
+  await checkDuplicate(ctx, p);
   const school = ctx.session.role === 'school' ? ctx.session.member : null;
   const row = await ctx.db
     .prepare(
@@ -923,6 +949,7 @@ route('PUT', '/api/team/:id', async (ctx) => {
   requireEditor(ctx.session);
   const before = await findTeamMember(ctx);
   const p = normalizeTeamMember(ctx.body);
+  await checkDuplicate(ctx, p, before.id, before);
   const row = await ctx.db
     .prepare('UPDATE team_members SET role = ?, name = ?, title = ?, school = ?, county = ? WHERE id = ? RETURNING *')
     .bind(p.role, p.name, p.title, p.school, p.county, before.id)
@@ -987,7 +1014,7 @@ async function handleApi(ctx) {
     if (ctx.setCookie) res.headers.append('Set-Cookie', ctx.setCookie);
     return res;
   } catch (err) {
-    if (err instanceof HttpError) return json(err.status, { error: err.message });
+    if (err instanceof HttpError) return json(err.status, { ...err.extra, error: err.message });
     console.error(err);
     return json(500, { error: '伺服器發生錯誤，請稍後重試。' });
   }
