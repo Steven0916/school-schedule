@@ -4,6 +4,7 @@
 
 const TEAM_ROLES = ['總召', '副總召', '計畫主持人', '協同主持人'];
 const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
+const KNOWN_SCHOOLS = ['石榴國中', '東榮國中', '永慶高中'];
 
 const state = {
   role: 'viewer',
@@ -40,6 +41,17 @@ function openPersonForm(role, existing = null) {
   const title = select('身分', TEAM_TITLES, existing?.title || '');
   const listSelect = select('名單', TEAM_ROLES, role);
   const name = h('input', { required: true, maxlength: 40, placeholder: '例如：王小明', autocomplete: 'off', value: existing?.name || '' });
+  // 服務學校：提供常用學校讓使用者選，也可自行輸入（例如教育處）
+  const schoolOptions = [...new Set([...KNOWN_SCHOOLS, ...state.people.map((p) => p.school).filter(Boolean)])];
+  const schoolList = h('datalist', { id: 'school-options' }, schoolOptions.map((s) => h('option', { value: s })));
+  const school = h('input', {
+    required: true,
+    maxlength: 40,
+    list: 'school-options',
+    placeholder: '例如：石榴國中',
+    autocomplete: 'off',
+    value: existing ? existing.school : state.schoolName,
+  });
   const error = h('p', { className: 'form-error', role: 'alert', hidden: true });
   const cancel = h('button', { type: 'button', className: 'cancel-button', onClick: closeModal }, '取消');
   const save = h('button', { type: 'submit', className: 'submit-button' }, existing ? '儲存' : '加入名單');
@@ -49,6 +61,7 @@ function openPersonForm(role, existing = null) {
     existing && h('label', {}, '名單', listSelect),
     h('label', {}, '身分', title),
     h('label', {}, '姓名', name),
+    h('label', {}, '服務學校', school, schoolList),
     error,
     h('div', { className: 'modal-actions' }, cancel, save)
   );
@@ -57,7 +70,7 @@ function openPersonForm(role, existing = null) {
     modalBusy = true;
     save.disabled = cancel.disabled = true;
     try {
-      const body = { role: existing ? listSelect.value : role, title: title.value, name: name.value };
+      const body = { role: existing ? listSelect.value : role, title: title.value, name: name.value, school: school.value };
       const person = await api(existing ? `/api/team/${existing.id}` : '/api/team', {
         method: existing ? 'PUT' : 'POST',
         body,
@@ -76,7 +89,7 @@ function openPersonForm(role, existing = null) {
   });
   openModal(
     existing ? `編輯${existing.role}` : `新增${role}`,
-    existing ? '修改身分或姓名；若放錯名單，可在「名單」改到另一邊。' : '選擇身分並輸入姓名後加入名單。',
+    existing ? '修改身分、姓名或服務學校；若放錯名單，可在「名單」改到另一邊。' : '選擇身分、輸入姓名與服務學校後加入名單。',
     form
   );
   (existing ? name : title).focus();
@@ -136,7 +149,7 @@ function roleGroup(role) {
             {},
             h('strong', {}, p.name),
             p.title ? h('span', { className: 'title-tag' }, p.title) : h('span', { className: 'title-missing' }, '未選身分'),
-            p.createdBySchool && h('span', {}, p.createdBySchool)
+            p.school ? h('span', { className: 'school-name' }, p.school) : h('span', { className: 'title-missing' }, '未填服務學校')
           ),
           p.canModify &&
             h(
@@ -200,8 +213,8 @@ function exportPeople() {
   const order = (p) => TEAM_ROLES.indexOf(p.role) * 10 + TEAM_TITLES.indexOf(p.title);
   const rows = [...state.people]
     .sort((a, b) => order(a) - order(b) || a.id - b.id)
-    .map((p) => [p.role, p.title || '未選身分', p.name, p.createdBySchool || '管理者']);
-  downloadXlsx(`計畫成員名單_${todayTaipei()}.xlsx`, '計畫成員', ['名單', '身分', '姓名', '學校'], rows);
+    .map((p) => [p.role, p.title || '未選身分', p.name, p.school || '未填', p.createdBySchool || '管理者']);
+  downloadXlsx(`計畫成員名單_${todayTaipei()}.xlsx`, '計畫成員', ['名單', '身分', '姓名', '服務學校', '新增者'], rows);
 }
 
 async function init() {

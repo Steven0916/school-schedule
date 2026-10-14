@@ -448,3 +448,4 @@ body.has-side-nav .float-actions{left:250px}
 @media (max-width:900px){body.has-side-nav .float-actions{left:16px}}
 .empty-add{white-space:nowrap}
 #intro-actions{flex:none}
+.team-list .school-name{color:#45657a;font-size:13px;font-weight:700}
