@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "wrangler d1 migrations apply school-schedule --local && wrangler dev",
-    "deploy": "wrangler d1 migrations apply school-schedule --remote && wrangler deploy"
+    "deploy": "wrangler d1 migrations apply school-schedule --remote && wrangler deploy",
+    "test": "node tests/run.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.144.0"

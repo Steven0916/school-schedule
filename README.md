@@ -25,6 +25,19 @@ git add . && git commit -m "說明" && git push   # 程式碼存到 GitHub
 
 本機測試的秘密變數放在 `.dev.vars`（`ADMIN_PASSWORD=...`、`PASSWORD_KEY=...`，不會上傳）。
 
+## 自動測試
+
+```
+npm test
+```
+
+會自動：套用本機資料庫變更 → 在 port 8790 啟動本機測試伺服器 → 執行 `tests/*.test.mjs` → 關閉伺服器，最後顯示每個測試檔的結果（全部通過時結束代碼為 0）。
+
+- 只使用本機資料庫（`.wrangler` 資料夾），**不會動到正式網站**；`tests/helpers.mjs` 會拒絕連到非本機的網址。
+- 需要專案根目錄有 `.dev.vars`（`ADMIN_PASSWORD`、`PASSWORD_KEY`）。
+- 建議每次發布前先執行一次；新增功能時，在 `tests/` 加一個 `名稱.test.mjs`，結尾用 `process.exitCode` 回報成敗。
+- 測試伺服器的紀錄在 `.wrangler/test-server.log`。
+
 ## 管理者密碼
 
 - 第一次登入時，會用 Cloudflare 秘密變數 `ADMIN_PASSWORD` 建立 `admin` 帳號；之後請在網站「帳號與權限」修改。
