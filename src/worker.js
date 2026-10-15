@@ -1032,6 +1032,7 @@ async function handlePage(ctx) {
   if (url.pathname === '/') return env.ASSETS.fetch(assetUrl('/index.html'));
   if (url.pathname === '/observations') return env.ASSETS.fetch(assetUrl('/observations.html'));
   if (url.pathname === '/team') return env.ASSETS.fetch(assetUrl('/team.html'));
+  if (url.pathname === '/completed') return env.ASSETS.fetch(assetUrl('/completed.html'));
 
   const login = LOGIN_PAGES[url.pathname];
   if (login) {

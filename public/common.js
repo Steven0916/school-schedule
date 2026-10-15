@@ -187,8 +187,8 @@ function openConfirmText({ title, description, phrase, confirmLabel, busyLabel, 
 // ---------- 左側選單（所有頁面共用） ----------
 
 const SIDE_LINKS = [
-  { href: '/#schedule', path: '/', hash: '#schedule', label: '期程清單', icon: 'calendar-days' },
-  { href: '/#completed', path: '/', hash: '#completed', label: '已完成工作', icon: 'circle-check-big' },
+  { href: '/', path: '/', label: '期程清單', icon: 'calendar-days' },
+  { href: '/completed', path: '/completed', label: '已完成工作', icon: 'circle-check-big' },
   { href: '/observations', path: '/observations', label: '公開觀課填報', icon: 'eye' },
   { href: '/team', path: '/team', label: '計畫成員', icon: 'users' },
 ];
@@ -198,17 +198,9 @@ function mountSideNav() {
     ...l,
     el: h('a', { href: l.href, className: 'side-link' }, icon(l.icon, 18), h('span', {}, l.label)),
   }));
-  const markCurrent = () => {
-    const onHome = location.pathname === '/';
-    const hash = location.hash === '#completed' ? '#completed' : '#schedule';
-    for (const l of links) {
-      const current = l.path === location.pathname && (!onHome || l.hash === hash);
-      if (current) l.el.setAttribute('aria-current', 'page');
-      else l.el.removeAttribute('aria-current');
-    }
-  };
-  markCurrent();
-  window.addEventListener('hashchange', markCurrent);
+  for (const l of links) {
+    if (l.path === location.pathname) l.el.setAttribute('aria-current', 'page');
+  }
   // 選單固定顯示：電腦在左側，手機在頂端（可左右滑動）
   const nav = h(
     'nav',

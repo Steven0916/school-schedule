@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 導入示範學校｜已完成工作</title>
+  <meta name="description" content="已確認完成的會議、工作、觀課計畫與重要行事。" />
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/common.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body data-page="completed">
+  <main class="site-shell">
+    <div class="top-rule"></div>
+    <div class="workspace">
+      <header class="header">
+        <div class="brand">
+          <div class="brand-mark" data-icon="circle-check-big" data-size="22"></div>
+          <div>
+            <span class="brand-kicker">AI 導入示範學校</span>
+            <strong>已完成工作</strong>
+          </div>
+        </div>
+      </header>
+
+      <section class="intro">
+        <div>
+          <p class="eyebrow">PROGRESS / 工作進度</p>
+          <h1>已完成工作</h1>
+          <p class="intro-copy">管理者確認完成的期程會集中在這裡，依完成時間由新到舊排列。</p>
+        </div>
+        <div id="intro-actions"></div>
+      </section>
+
+      <div class="access-banner" id="access-banner"></div>
+
+      <section class="schedule-section completed-page" aria-labelledby="completed-title">
+        <div class="section-top">
+          <div>
+            <p class="eyebrow">COMPLETED</p>
+            <h2 id="completed-title">已確認完成 <span id="completed-count"></span></h2>
+          </div>
+          <button class="refresh-button" id="refresh-button" aria-label="更新清單">更新清單<span id="last-updated"></span></button>
+        </div>
+        <div class="list completed-list" id="completed-list" aria-live="polite"></div>
+      </section>
+
+      <p class="status-error" id="status-error" role="alert" hidden></p>
+
+      <footer>AI 導入示範學校 <span>／</span> 已完成工作</footer>
+    </div>
+  </main>
+
+  <dialog class="modal" id="modal"></dialog>
+  <div class="notice" id="notice" role="status" hidden></div>
+</body>
+</html>

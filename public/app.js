@@ -382,14 +382,17 @@ function eventRow(e, kind) {
 }
 
 function renderHeaderParts() {
+  const next = PAGE === 'completed' ? '?next=/completed' : '';
   $('intro-actions').replaceChildren(
     canEdit()
-      ? h('button', { className: 'add-button', onClick: () => openEventForm(null) }, icon('plus', 19), '新增期程')
+      ? PAGE === 'home'
+        ? h('button', { className: 'add-button', onClick: () => openEventForm(null) }, icon('plus', 19), '新增期程')
+        : ''
       : h(
           'div',
           { className: 'login-links' },
-          h('a', { className: 'add-button', href: '/admin/login' }, '管理者登入'),
-          h('a', { className: 'school-login-link', href: '/school/login' }, '學校端登入')
+          h('a', { className: 'add-button', href: `/admin/login${next}` }, '管理者登入'),
+          h('a', { className: 'school-login-link', href: `/school/login${next}` }, '學校端登入')
         )
   );
 
@@ -404,6 +407,7 @@ function renderHeaderParts() {
   } else {
     banner.replaceChildren(h('span', {}, '公開瀏覽 · 管理者與學校端使用各自的登入入口。'));
   }
+  if (PAGE !== 'home') return; // 以下為首頁的檢視切換與類別篩選
 
   $('view-toggle').replaceChildren(
     ...[
@@ -572,7 +576,37 @@ function calendarView() {
 }
 
 function render() {
-  const { pending, filtered, completed } = derived();
+  renderHeaderParts();
+  if (PAGE === 'completed') renderCompleted();
+  else renderHome();
+
+  // 錯誤訊息
+  const status = $('status-error');
+  status.textContent = state.statusError || state.refreshError;
+  status.hidden = !status.textContent;
+}
+
+// 已完成工作頁（/completed）
+function renderCompleted() {
+  const { completed } = derived();
+  const dash = state.loading;
+  $('completed-count').textContent = dash ? '' : `${completed.length} 筆`;
+  $('last-updated').textContent = state.lastUpdated ? ` · ${state.lastUpdated}` : '';
+  const compact = (text) => h('div', { className: 'empty-state compact' }, h('p', {}, text));
+  $('completed-list').replaceChildren(
+    ...(dash
+      ? [compact('正在載入…')]
+      : state.loadError
+        ? [compact('暫時無法載入。')]
+        : completed.length
+          ? completed.map((e) => eventRow(e, 'completed'))
+          : [compact('尚無已確認完成的項目。')])
+  );
+}
+
+// 首頁：統計、期程清單、回收區
+function renderHome() {
+  const { pending, filtered } = derived();
   const dash = state.loading;
 
   // 統計
@@ -594,8 +628,6 @@ function render() {
       )
     )
   );
-
-  renderHeaderParts();
 
   // 期程清單
   $('schedule-count').textContent = dash ? '' : `${filtered.length} 筆待處理`;
@@ -639,19 +671,6 @@ function render() {
     );
   }
 
-  // 已完成
-  $('completed-count').textContent = dash ? '' : `${completed.length} 筆`;
-  const compact = (text) => h('div', { className: 'empty-state compact' }, h('p', {}, text));
-  $('completed-list').replaceChildren(
-    ...(dash
-      ? [compact('正在載入…')]
-      : state.loadError
-        ? [compact('暫時無法載入。')]
-        : completed.length
-          ? completed.map((e) => eventRow(e, 'completed'))
-          : [compact('尚無已確認完成的項目。')])
-  );
-
   // 回收區
   const trashSection = $('trash-section');
   trashSection.hidden = !canEdit();
@@ -679,11 +698,6 @@ function render() {
     details.addEventListener('toggle', () => (state.trashOpen = details.open));
     trashSection.replaceChildren(details);
   }
-
-  // 錯誤訊息
-  const status = $('status-error');
-  status.textContent = state.statusError || state.refreshError;
-  status.hidden = !status.textContent;
 }
 
 // ---------- 帳號與權限（管理者） ----------
@@ -1040,6 +1054,11 @@ let auditRefresh = () => {};
 
 // ---------- 啟動 ----------
 
+// 首頁（/）與已完成工作頁（/completed）共用這支程式
+const PAGE = document.body.dataset.page === 'completed' ? 'completed' : 'home';
+// 舊連結 /#completed 轉到新頁面
+if (PAGE === 'home' && location.hash === '#completed') location.replace('/completed');
+
 async function init() {
   for (const el of document.querySelectorAll('[data-icon]')) {
     el.append(icon(el.dataset.icon, Number(el.dataset.size) || 16));
@@ -1054,14 +1073,14 @@ async function init() {
     state.role = 'viewer';
   }
 
-  if (isOwner()) {
+  if (isOwner() && PAGE === 'home') {
     mountSchoolAccess();
     mountAuditLog();
   }
   $('refresh-button').addEventListener('click', () => load());
 
   await load(true);
-  // 從左側選單連過來時（/#completed 等），資料載入後版面變高，需重新捲到該區塊
+  // 從其他頁連過來時（/#schedule），資料載入後版面變高，需重新捲到該區塊
   const target = location.hash && $(location.hash.slice(1));
   if (target) target.scrollIntoView();
 

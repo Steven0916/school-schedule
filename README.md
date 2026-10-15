@@ -5,13 +5,14 @@
 網站：https://school-schedule.ydlo-school.workers.dev
 公開觀課填報：https://school-schedule.ydlo-school.workers.dev/observations
 計畫成員：https://school-schedule.ydlo-school.workers.dev/team
+已完成工作：https://school-schedule.ydlo-school.workers.dev/completed
 
 ## 架構
 
 - **Cloudflare Workers**：`src/worker.js`（API 與頁面）
 - **Cloudflare D1**：資料庫（期程、學校帳號、登入狀態、操作紀錄），資料表定義在 `migrations/`
 - **Workers KV**（binding `FILES`）：觀課附件的檔案內容
-- **靜態網頁**：`public/`（`common.js` 為各頁共用的工具與左側選單；`app.js` 期程頁、`observations.js` 公開觀課頁、`team.js` 計畫成員頁）
+- **靜態網頁**：`public/`（`common.js` 為各頁共用的工具與左側選單；`app.js` 期程頁與已完成工作頁（以 body 的 data-page 區分）、`observations.js` 公開觀課頁、`team.js` 計畫成員頁）
 
 ## 修改與上線
 
