@@ -4,7 +4,6 @@
 
 const TEAM_ROLES = ['總召', '副總召', '計畫主持人', '協同主持人'];
 const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
-const KNOWN_SCHOOLS = ['石榴國中', '東榮國中', '永慶高中'];
 const TEAM_COUNTIES = ['雲林縣', '嘉義縣'];
 const SPLIT_ROLES = ['計畫主持人', '協同主持人']; // 這些名單的雲林縣、嘉義縣分左右兩欄
 
@@ -51,9 +50,13 @@ function openPersonForm(role, existing = null) {
   const title = select('身分', TEAM_TITLES, existing?.title || '');
   const listSelect = select('名單', TEAM_ROLES, role);
   const name = h('input', { required: true, maxlength: 40, placeholder: '例如：王小明', autocomplete: 'off', value: existing?.name || '' });
-  // 服務學校：提供常用學校讓使用者選，也可自行輸入（例如教育處）
-  const schoolOptions = [...new Set([...KNOWN_SCHOOLS, ...state.people.map((p) => p.school).filter(Boolean)])];
-  const schoolList = h('datalist', { id: 'school-options' }, schoolOptions.map((s) => h('option', { value: s })));
+  // 服務學校：建議清單來自管理者設定的學校，也可自行輸入（例如教育處）
+  const schoolOptions = [...new Set([...SCHOOLS.map((s) => s.name), ...state.people.map((p) => p.school).filter(Boolean)])];
+  const schoolList = h(
+    'datalist',
+    { id: 'school-options' },
+    schoolOptions.map((s) => h('option', { value: s, label: schoolCounty(s) || null }))
+  );
   const school = h('input', {
     required: true,
     maxlength: 40,
@@ -62,6 +65,16 @@ function openPersonForm(role, existing = null) {
     autocomplete: 'off',
     value: existing ? existing.school : state.schoolName,
   });
+  // 清單中的學校：縣市自動帶入並鎖定；清單外的單位才自己選縣市
+  const countyHint = h('small', { className: 'field-hint' });
+  const syncCounty = () => {
+    const known = schoolCounty(school.value.trim());
+    county.disabled = Boolean(known);
+    if (known) county.value = known;
+    countyHint.textContent = known ? `已依學校設定自動帶入：${known}` : '';
+  };
+  school.addEventListener('input', syncCounty);
+  syncCounty();
   const error = h('p', { className: 'form-error', role: 'alert', hidden: true });
   const cancel = h('button', { type: 'button', className: 'cancel-button', onClick: closeModal }, '取消');
   const save = h('button', { type: 'submit', className: 'submit-button' }, existing ? '儲存' : '加入名單');
@@ -78,10 +91,10 @@ function openPersonForm(role, existing = null) {
     'form',
     { className: 'login-form' },
     existing && h('label', {}, '名單', listSelect),
-    h('label', {}, '縣市', county),
-    h('label', {}, '身分', title),
     h('label', {}, '姓名', name),
+    h('label', {}, '身分', title),
     h('label', {}, '服務學校', school, schoolList),
+    h('label', {}, '縣市', county, countyHint),
     error,
     h('div', { className: 'modal-actions' }, cancel, save)
   );
@@ -114,10 +127,10 @@ function openPersonForm(role, existing = null) {
   });
   openModal(
     existing ? `編輯${existing.role}` : `新增${role}`,
-    existing ? '修改縣市、身分、姓名或服務學校；若放錯名單，可在「名單」改到另一邊。' : '選擇縣市與身分、輸入姓名與服務學校後加入名單。',
+    existing ? '修改縣市、身分、姓名或服務學校；若放錯名單，可在「名單」改到另一邊。' : '輸入姓名、選擇身分與服務學校；清單中的學校會自動帶入縣市。',
     form
   );
-  (existing ? name : title).focus();
+  name.focus();
 }
 
 function openRemovePerson(p) {
@@ -332,6 +345,7 @@ async function init() {
   } catch {
     state.role = 'viewer';
   }
+  await loadSchools();
   render();
   await load();
 }

@@ -1,8 +1,8 @@
 // 期程統整 — Cloudflare Worker（API + 靜態頁面），資料存在 D1。
 
 const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
-const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中'];
-const EVENT_SCHOOLS = ['石榴國中', '東榮國中', '永慶高中']; // 期程可勾選的參與學校
+// 學校清單存在資料表 schools（管理者在網站上維護），地點另外多一個「線上會議」
+const ONLINE_LOCATION = '線上會議';
 const GRADES = [7, 8, 9];
 const TEAM_ROLES = ['總召', '副總召', '計畫主持人', '協同主持人'];
 const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
@@ -110,7 +110,8 @@ function optionalString(value, max, label) {
   return trimmed;
 }
 
-function normalizeEvent(body) {
+// schoolNames：目前設定的學校名稱（地點與參與學校只接受這些）
+function normalizeEvent(body, schoolNames) {
   const title = optionalString(body.title, 120, '項目名稱');
   if (!title) throw new HttpError(400, '請填寫項目名稱。');
   if (!CATEGORIES.includes(body.category)) throw new HttpError(400, '類別不正確。');
@@ -121,7 +122,7 @@ function normalizeEvent(body) {
   const time = body.time ? String(body.time) : '';
   if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new HttpError(400, '時間格式錯誤。');
   const location = body.location ? String(body.location) : '';
-  if (location && !LOCATIONS.includes(location)) throw new HttpError(400, '地點不正確。');
+  if (location && location !== ONLINE_LOCATION && !schoolNames.includes(location)) throw new HttpError(400, '地點不正確。');
   return {
     title,
     category: body.category,
@@ -131,7 +132,7 @@ function normalizeEvent(body) {
     location,
     owner: optionalString(body.owner, 80, '主辦'),
     notes: optionalString(body.notes, 500, '備註'),
-    schools: Array.isArray(body.schools) ? EVENT_SCHOOLS.filter((s) => body.schools.includes(s)) : [],
+    schools: Array.isArray(body.schools) ? schoolNames.filter((s) => body.schools.includes(s)) : [],
   };
 }
 
@@ -557,7 +558,7 @@ route('GET', '/api/events/trash', async (ctx) => {
 
 route('POST', '/api/events', async (ctx) => {
   requireEditor(ctx.session);
-  const e = normalizeEvent(ctx.body);
+  const e = normalizeEvent(ctx.body, await schoolNames(ctx));
   const school = ctx.session.role === 'school' ? ctx.session.member : null;
   const row = await ctx.db
     .prepare(
@@ -575,7 +576,7 @@ route('POST', '/api/events', async (ctx) => {
 route('PUT', '/api/events/:id', async (ctx) => {
   requireOwner(ctx.session);
   const before = await findEvent(ctx, ctx.params.id);
-  const e = normalizeEvent(ctx.body);
+  const e = normalizeEvent(ctx.body, await schoolNames(ctx));
   const row = await ctx.db
     .prepare(
       `UPDATE events SET title = ?, category = ?, start_date = ?, end_date = ?, time = ?, location = ?,
@@ -636,19 +637,19 @@ const observationLabel = (o) => `${o.subject}｜${o.unit}（${o.date}）`;
 
 // 觀課 → 期程清單的「觀課計畫」。期程是公開的，所以不放設計者姓名。
 const GRADE_LABELS = { 7: '七年級', 8: '八年級', 9: '九年級' };
-function observationEvent(o, schoolName) {
+function observationEvent(o, schoolName, names = []) {
   return {
     title: `公開觀課｜${o.subject}｜${o.unit}`.slice(0, 120),
     date: o.date,
-    location: LOCATIONS.includes(schoolName) ? schoolName : '',
+    location: names.includes(schoolName) ? schoolName : '',
     owner: schoolName || '',
-    schools: EVENT_SCHOOLS.includes(schoolName) ? [schoolName] : [],
+    schools: names.includes(schoolName) ? [schoolName] : [],
     notes: `${GRADE_LABELS[o.grade] || ''} ${o.className} 班 · 共 ${o.periods} 節，每節 ${o.minutes} 分鐘\n（由公開觀課填報自動建立）`,
   };
 }
 
-function insertObservationEvent(ctx, observationId, o, school) {
-  const e = observationEvent(o, school?.school_name);
+async function insertObservationEvent(ctx, observationId, o, school) {
+  const e = observationEvent(o, school?.school_name, await schoolNames(ctx));
   return ctx.db
     .prepare(
       `INSERT INTO events (title, category, start_date, end_date, time, location, owner, notes, schools,
@@ -685,7 +686,7 @@ route('POST', '/api/observations', async (ctx) => {
     .bind(o.date, o.subject, o.designer, o.grade, o.className, o.students, o.periods, o.minutes, o.unit,
       JSON.stringify(o.modes), school?.school_name ?? null, school?.id ?? null, new Date().toISOString())
     .first();
-  await insertObservationEvent(ctx, row.id, o, school).run();
+  await (await insertObservationEvent(ctx, row.id, o, school)).run();
   await audit(ctx, '填報公開觀課', observationLabel(o));
   return toObservation(row, ctx.session, []);
 });
@@ -709,7 +710,7 @@ route('PUT', '/api/observations/:id', async (ctx) => {
     ? { id: before.created_by_member_id, school_name: before.created_by_school }
     : null;
   if (!linked) {
-    await insertObservationEvent(ctx, before.id, o, school).run();
+    await (await insertObservationEvent(ctx, before.id, o, school)).run();
   } else if (!linked.deleted_at) {
     const e = observationEvent(o, before.created_by_school);
     await ctx.db
@@ -844,6 +845,94 @@ route('DELETE', '/api/observation-files/:id', async (ctx) => {
   return { ok: true };
 });
 
+// 學校與縣市（管理者維護；全站的學校選項都從這裡讀取）
+const countyRank = (c) => (TEAM_COUNTIES.includes(c) ? TEAM_COUNTIES.indexOf(c) : TEAM_COUNTIES.length);
+const toSchool = (r) => ({ id: r.id, name: r.name, county: r.county });
+
+// 同一個請求內只查一次
+async function getSchools(ctx) {
+  if (!ctx.schools) {
+    const { results } = await ctx.db.prepare('SELECT * FROM schools ORDER BY sort_order, id').all();
+    ctx.schools = results.sort((a, b) => countyRank(a.county) - countyRank(b.county));
+  }
+  return ctx.schools;
+}
+const schoolNames = async (ctx) => (await getSchools(ctx)).map((s) => s.name);
+
+function normalizeSchool(body) {
+  const name = requiredString(body.name, 40, '學校名稱');
+  if (!TEAM_COUNTIES.includes(body.county)) throw new HttpError(400, '請選擇縣市（雲林縣或嘉義縣）。');
+  return { name, county: body.county };
+}
+
+async function assertSchoolNameFree(ctx, name, excludeId = 0) {
+  const norm = (v) => String(v).replace(/\s+/g, '');
+  if ((await getSchools(ctx)).some((s) => s.id !== excludeId && norm(s.name) === norm(name))) {
+    throw new HttpError(409, `「${name}」已在學校清單中。`);
+  }
+}
+
+async function findSchool(ctx) {
+  const row = await ctx.db.prepare('SELECT * FROM schools WHERE id = ?').bind(ctx.params.id).first();
+  if (!row) throw new HttpError(404, '找不到這所學校。');
+  return row;
+}
+
+route('GET', '/api/schools', async (ctx) => (await getSchools(ctx)).map(toSchool));
+
+route('POST', '/api/schools', async (ctx) => {
+  requireOwner(ctx.session);
+  const s = normalizeSchool(ctx.body);
+  await assertSchoolNameFree(ctx, s.name);
+  const row = await ctx.db
+    .prepare(
+      `INSERT INTO schools (name, county, sort_order, created_at)
+       VALUES (?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM schools), ?) RETURNING *`
+    )
+    .bind(s.name, s.county, new Date().toISOString())
+    .first();
+  await audit(ctx, '新增學校', `${s.name}（${s.county}）`);
+  return toSchool(row);
+});
+
+// 改名時一併更新期程的地點、參與學校與計畫成員的服務學校
+route('PUT', '/api/schools/:id', async (ctx) => {
+  requireOwner(ctx.session);
+  const before = await findSchool(ctx);
+  const s = normalizeSchool(ctx.body);
+  await assertSchoolNameFree(ctx, s.name, before.id);
+  const statements = [ctx.db.prepare('UPDATE schools SET name = ?, county = ? WHERE id = ?').bind(s.name, s.county, before.id)];
+  if (s.name !== before.name) {
+    const oldJson = JSON.stringify(before.name);
+    const newJson = JSON.stringify(s.name);
+    statements.push(
+      ctx.db.prepare('UPDATE events SET location = ? WHERE location = ?').bind(s.name, before.name),
+      ctx.db.prepare('UPDATE events SET schools = REPLACE(schools, ?, ?) WHERE schools LIKE ?').bind(oldJson, newJson, `%${oldJson}%`),
+      ctx.db.prepare('UPDATE team_members SET school = ? WHERE school = ?').bind(s.name, before.name),
+      // 學校帳號以名稱對應學校
+      ctx.db.prepare('UPDATE members SET school_name = ? WHERE school_name = ?').bind(s.name, before.name)
+    );
+  }
+  // 計畫成員的縣市跟著學校
+  statements.push(ctx.db.prepare('UPDATE team_members SET county = ? WHERE school = ?').bind(s.county, s.name));
+  await ctx.db.batch(statements);
+  const changes = [
+    s.name !== before.name && `名稱 ${before.name} → ${s.name}`,
+    s.county !== before.county && `縣市 ${before.county} → ${s.county}`,
+  ].filter(Boolean);
+  await audit(ctx, '修改學校', changes.join('、') || s.name);
+  return toSchool({ ...before, ...s });
+});
+
+// 刪除只移出清單；既有期程與名單上的學校名稱保留不動
+route('DELETE', '/api/schools/:id', async (ctx) => {
+  requireOwner(ctx.session);
+  const row = await findSchool(ctx);
+  await ctx.db.prepare('DELETE FROM schools WHERE id = ?').bind(row.id).run();
+  await audit(ctx, '刪除學校', `${row.name}（${row.county}）`);
+  return { ok: true };
+});
+
 // 計畫成員
 const toTeamMember = (row, session) => ({
   id: row.id,
@@ -856,17 +945,15 @@ const toTeamMember = (row, session) => ({
   canModify: canDeleteEvent(row, session),
 });
 
-function normalizeTeamMember(body) {
+// 服務學校在學校清單中時，縣市一律以學校設定為準（避免填錯）；清單外的單位才看使用者選的縣市
+async function normalizeTeamMember(ctx, body) {
   if (!TEAM_ROLES.includes(body.role)) throw new HttpError(400, '名單類別不正確。');
   if (!TEAM_TITLES.includes(body.title)) throw new HttpError(400, '請選擇身分（校長、主任、組長、教師、職員）。');
-  if (!TEAM_COUNTIES.includes(body.county)) throw new HttpError(400, '請選擇縣市（雲林縣或嘉義縣）。');
-  return {
-    role: body.role,
-    title: body.title,
-    name: requiredString(body.name, 40, '姓名'),
-    school: requiredString(body.school, 40, '服務學校'),
-    county: body.county,
-  };
+  const school = requiredString(body.school, 40, '服務學校');
+  const known = (await getSchools(ctx)).find((s) => s.name === school);
+  const county = known ? known.county : body.county;
+  if (!TEAM_COUNTIES.includes(county)) throw new HttpError(400, '請選擇縣市（雲林縣或嘉義縣）。');
+  return { role: body.role, title: body.title, name: requiredString(body.name, 40, '姓名'), school, county };
 }
 
 // deleted：true 時找回收區裡的名單
@@ -935,7 +1022,7 @@ route('POST', '/api/team/:id/restore', async (ctx) => {
 
 route('POST', '/api/team', async (ctx) => {
   requireEditor(ctx.session);
-  const p = normalizeTeamMember(ctx.body);
+  const p = await normalizeTeamMember(ctx, ctx.body);
   await checkDuplicate(ctx, p);
   const school = ctx.session.role === 'school' ? ctx.session.member : null;
   const row = await ctx.db
@@ -952,7 +1039,7 @@ route('POST', '/api/team', async (ctx) => {
 route('PUT', '/api/team/:id', async (ctx) => {
   requireEditor(ctx.session);
   const before = await findTeamMember(ctx);
-  const p = normalizeTeamMember(ctx.body);
+  const p = await normalizeTeamMember(ctx, ctx.body);
   await checkDuplicate(ctx, p, before.id, before);
   const row = await ctx.db
     .prepare('UPDATE team_members SET role = ?, name = ?, title = ?, school = ?, county = ? WHERE id = ? RETURNING *')

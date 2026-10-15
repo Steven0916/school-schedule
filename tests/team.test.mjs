@@ -31,11 +31,16 @@ ok(a.data.title === '校長', 'title saved');
 ok(a.data.school === '石榴國中', 'school saved');
 // 縣市
 ok(a.data.county === '雲林縣', 'county saved');
-ok((await req('/api/team', { method: 'POST', body: { role: '計畫主持人', title: '校長', name: '某人', county: '' }, cookie: ac })).status === 400, 'missing county rejected');
-ok((await req('/api/team', { method: 'POST', body: { role: '計畫主持人', title: '校長', name: '某人', county: '台南市' }, cookie: ac })).status === 400, 'other county rejected');
-const cy = await req(`/api/team/${a.data.id}`, { method: 'PUT', body: { role: '計畫主持人', title: '校長', name: '王大明', county: '嘉義縣' }, cookie: ac });
+// 清單外的單位：縣市要自己選，且只能是雲林縣或嘉義縣
+const outside = { role: '計畫主持人', title: '校長', name: '某人', school: '測試用教育處' };
+ok((await req('/api/team', { method: 'POST', body: { ...outside, county: '' }, cookie: ac })).status === 400, 'missing county rejected');
+ok((await req('/api/team', { method: 'POST', body: { ...outside, county: '台南市' }, cookie: ac })).status === 400, 'other county rejected');
+const cy = await req(`/api/team/${a.data.id}`, { method: 'PUT', body: { role: '計畫主持人', title: '校長', name: '王大明', school: '測試用教育處', county: '嘉義縣' }, cookie: ac });
 ok(cy.status === 200 && cy.data.county === '嘉義縣', 'edit county');
 ok((await req('/api/team')).data.find((p) => p.id === a.data.id).county === '嘉義縣', 'anon sees county');
+// 清單中的學校：縣市以學校設定為準（石榴國中＝雲林縣），使用者送來的縣市不採用
+const auto = await req(`/api/team/${a.data.id}`, { method: 'PUT', body: { role: '計畫主持人', title: '校長', name: '王大明', school: '石榴國中', county: '嘉義縣' }, cookie: ac });
+ok(auto.status === 200 && auto.data.county === '雲林縣', 'known school forces its county ' + JSON.stringify(auto.data));
 ok((await req('/api/team', { method: 'POST', body: { role: '計畫主持人', title: '校長', name: '某人', school: '  ' }, cookie: ac })).status === 400, 'blank school rejected');
 ok((await req('/api/team', { method: 'POST', body: { role: '計畫主持人', title: '校長', name: '某人', school: 'x'.repeat(41) }, cookie: ac })).status === 400, 'long school rejected');
 const sch = await req(`/api/team/${a.data.id}`, { method: 'PUT', body: { role: '計畫主持人', title: '校長', name: '王大明', school: ' 雲林縣教育處 ' }, cookie: ac });

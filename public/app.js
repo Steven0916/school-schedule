@@ -1,8 +1,8 @@
 'use strict';
 
 const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
-const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中'];
-const EVENT_SCHOOLS = ['石榴國中', '東榮國中', '永慶高中']; // 期程可勾選的參與學校（需與 worker.js 一致）
+// 地點與參與學校的選項來自管理者設定的學校清單（SCHOOLS，見 common.js）
+const ONLINE_LOCATION = '線上會議';
 
 // ---------- 狀態 ----------
 
@@ -117,17 +117,35 @@ function openEventForm(existing, category = '會議', startDate = '') {
     'select',
     { name: 'location', className: 'form-select', value: v.location || '' },
     h('option', { value: '' }, '請選擇地點'),
-    LOCATIONS.map((l) => h('option', { value: l }, l))
+    h('option', { value: ONLINE_LOCATION }, ONLINE_LOCATION),
+    // 依縣市分組列出學校
+    COUNTIES.map((c) => {
+      const list = SCHOOLS.filter((s) => s.county === c);
+      return list.length && h('optgroup', { label: c }, list.map((s) => h('option', { value: s.name }, s.name)));
+    })
   );
   const notes = h('textarea', { name: 'notes', maxlength: 500, rows: 3, placeholder: '補充準備事項等', value: v.notes || '' });
-  const schoolBoxes = EVENT_SCHOOLS.map((s) =>
-    h('input', { type: 'checkbox', value: s, checked: (v.schools || []).includes(s) })
+  const schoolBoxes = SCHOOLS.map((s) =>
+    h('input', { type: 'checkbox', value: s.name, checked: (v.schools || []).includes(s.name) })
   );
   const schoolField = h(
     'fieldset',
     { className: 'school-field' },
     h('legend', {}, h('div', { className: 'field-label' }, '參與學校 ', h('small', {}, '選填，可複選'))),
-    h('div', { className: 'school-options' }, schoolBoxes.map((box) => h('label', { className: 'school-option' }, box, box.value)))
+    SCHOOLS.length
+      ? COUNTIES.map((c) => {
+          const boxes = schoolBoxes.filter((b) => schoolCounty(b.value) === c);
+          return (
+            boxes.length &&
+            h(
+              'div',
+              { className: 'school-county' },
+              h('span', { className: 'school-county-name' }, c),
+              h('div', { className: 'school-options' }, boxes.map((box) => h('label', { className: 'school-option' }, box, box.value)))
+            )
+          );
+        })
+      : h('p', { className: 'files-hint' }, '尚未設定學校，請管理者到「帳號與權限」新增。')
   );
   const error = h('p', { className: 'form-error', role: 'alert', hidden: true });
   const cancel = h('button', { type: 'button', className: 'cancel-button', onClick: closeModal }, '取消');
@@ -767,6 +785,147 @@ function renderHome() {
   }
 }
 
+// ---------- 學校與縣市設定（管理者） ----------
+
+// onChange：學校清單變動後通知外層（更新帳號列表的縣市、學校名稱建議）
+function schoolSettingsSection(onChange) {
+  const msg = h('p', { className: 'form-error', role: 'alert', hidden: true });
+  const listEl = h('div');
+  const countySelect = (value = '') =>
+    h(
+      'select',
+      { className: 'form-select', required: true, 'aria-label': '縣市', value },
+      h('option', { value: '' }, '請選擇縣市'),
+      COUNTIES.map((c) => h('option', { value: c }, c))
+    );
+
+  const changed = async () => {
+    await loadSchools();
+    draw();
+    onChange();
+    render(); // 期程清單裡的選項也跟著更新
+  };
+
+  function draw() {
+    listEl.replaceChildren(
+      SCHOOLS.length
+        ? h(
+            'div',
+            { className: 'member-list' },
+            SCHOOLS.map((sc) =>
+              h(
+                'div',
+                { className: 'member-row' },
+                h('div', {}, h('strong', {}, sc.name, h('span', { className: 'county-tag' }, sc.county))),
+                h(
+                  'div',
+                  { className: 'account-actions' },
+                  h('button', { type: 'button', className: 'edit-button', onClick: () => openEdit(sc) }, icon('pencil', 16), h('span', {}, '編輯')),
+                  h(
+                    'button',
+                    { type: 'button', className: 'delete-button', title: '刪除學校', 'aria-label': `刪除 ${sc.name}`, onClick: () => openRemove(sc) },
+                    icon('trash', 18)
+                  )
+                )
+              )
+            )
+          )
+        : h('div', { className: 'trash-empty' }, '尚未設定學校。')
+    );
+  }
+
+  // 新增
+  const nameInput = h('input', { required: true, maxlength: 40, placeholder: '例如：石榴國中' });
+  const county = countySelect();
+  const addBtn = h('button', { className: 'submit-button' }, icon('plus', 16), '新增學校');
+  const addForm = h('form', { className: 'school-form' }, h('label', {}, '學校名稱', nameInput), h('label', {}, '縣市', county), addBtn);
+  addForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    setError(msg, '');
+    addBtn.disabled = true;
+    try {
+      const sc = await api('/api/schools', { method: 'POST', body: { name: nameInput.value, county: county.value } });
+      addForm.reset();
+      await changed();
+      notify(`已新增 ${sc.name}（${sc.county}）`);
+    } catch (err) {
+      setError(msg, err.message);
+    } finally {
+      addBtn.disabled = false;
+    }
+  });
+
+  function openEdit(sc) {
+    const name = h('input', { required: true, maxlength: 40, value: sc.name });
+    const c = countySelect(sc.county);
+    const error = h('p', { className: 'form-error', role: 'alert', hidden: true });
+    const cancel = h('button', { type: 'button', className: 'cancel-button', onClick: closeModal }, '取消');
+    const save = h('button', { type: 'submit', className: 'submit-button' }, '儲存');
+    const form = h(
+      'form',
+      { className: 'login-form' },
+      h('label', {}, '學校名稱', name),
+      h('label', {}, '縣市', c),
+      error,
+      h('div', { className: 'modal-actions' }, cancel, save)
+    );
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      modalBusy = true;
+      save.disabled = cancel.disabled = true;
+      try {
+        await api(`/api/schools/${sc.id}`, { method: 'PUT', body: { name: name.value, county: c.value } });
+        closeModal();
+        await changed();
+        notify('已更新學校設定');
+        load();
+      } catch (err) {
+        modalBusy = false;
+        save.disabled = cancel.disabled = false;
+        setError(error, err.message);
+      }
+    });
+    openModal(`編輯 ${sc.name}`, '改名時，期程的地點、參與學校、計畫成員的服務學校與學校帳號名稱會一併更新。', form);
+    name.focus();
+  }
+
+  function openRemove(sc) {
+    const error = h('p', { className: 'form-error', role: 'alert', hidden: true });
+    const cancel = h('button', { type: 'button', className: 'cancel-button', onClick: closeModal }, '取消');
+    const confirm = h('button', { type: 'button', className: 'danger-button' }, '確認刪除');
+    confirm.addEventListener('click', async () => {
+      modalBusy = true;
+      confirm.disabled = cancel.disabled = true;
+      try {
+        await api(`/api/schools/${sc.id}`, { method: 'DELETE' });
+        closeModal();
+        await changed();
+        notify(`已從清單移除 ${sc.name}`);
+      } catch (err) {
+        modalBusy = false;
+        confirm.disabled = cancel.disabled = false;
+        setError(error, err.message);
+      }
+    });
+    openModal(
+      `從清單移除 ${sc.name}？`,
+      '移除後，新增期程時不能再選這所學校；已建立的期程、名單上的學校名稱會保留不變。',
+      h('div', {}, error, h('div', { className: 'modal-actions' }, cancel, confirm))
+    );
+  }
+
+  draw();
+  return h(
+    'details',
+    { className: 'admin-credentials school-settings' },
+    h('summary', {}, '學校與縣市'),
+    h('p', { className: 'section-hint' }, '全站的學校選項（期程地點、參與學校、計畫成員服務學校）都從這裡讀取；計畫成員選了清單中的學校，縣市會自動帶入。'),
+    addForm,
+    msg,
+    listEl
+  );
+}
+
 // ---------- 帳號與權限（管理者） ----------
 
 function mountSchoolAccess() {
@@ -835,7 +994,13 @@ function mountSchoolAccess() {
               h(
                 'div',
                 { className: 'member-row' },
-                h('div', {}, h('strong', {}, m.schoolName), h('span', {}, `帳號：${m.username}`), passwordCell(m)),
+                h(
+                  'div',
+                  {},
+                  h('strong', {}, m.schoolName, schoolCounty(m.schoolName) && h('span', { className: 'county-tag' }, schoolCounty(m.schoolName))),
+                  h('span', {}, `帳號：${m.username}`),
+                  passwordCell(m)
+                ),
                 h(
                   'div',
                   { className: 'account-actions' },
@@ -865,7 +1030,11 @@ function mountSchoolAccess() {
   }
 
   // 建立學校帳號
-  const schoolName = h('input', { required: true, maxlength: 80, placeholder: '例如：石榴國中' });
+  const schoolName = h('input', { required: true, maxlength: 80, placeholder: '例如：石榴國中', list: 'account-school-options' });
+  const accountSchoolList = h('datalist', { id: 'account-school-options' });
+  const refreshSchoolOptions = () =>
+    accountSchoolList.replaceChildren(...SCHOOLS.map((sc) => h('option', { value: sc.name })));
+  refreshSchoolOptions();
   const username = h('input', {
     required: true,
     minlength: 3,
@@ -886,7 +1055,7 @@ function mountSchoolAccess() {
   const createForm = h(
     'form',
     { className: 'school-form' },
-    h('label', {}, '學校名稱', schoolName),
+    h('label', {}, '學校名稱', schoolName, accountSchoolList),
     h('label', {}, '學校端帳號', username),
     h('label', {}, '登入密碼', password),
     createBtn
@@ -1047,6 +1216,10 @@ function mountSchoolAccess() {
         errorEl,
         okEl,
         listEl,
+        schoolSettingsSection(() => {
+          refreshSchoolOptions();
+          renderMembers();
+        }),
         h('details', { className: 'admin-credentials' }, h('summary', {}, '修改管理者帳號密碼'), credForm)
       )
     )
@@ -1139,6 +1312,7 @@ async function init() {
   } catch {
     state.role = 'viewer';
   }
+  await loadSchools();
 
   if (isOwner() && PAGE === 'home') {
     mountSchoolAccess();

@@ -479,3 +479,14 @@ body.has-side-nav .float-actions{left:250px}
 .filter-count{color:inherit;opacity:.7;background:#0000000d;border-radius:999px;margin-left:2px;padding:0 7px;font-size:12px}
 .filter.active .filter-count{background:#ffffff26;opacity:.9}
 @media (max-width:600px){.month-header{padding:9px 12px}}
+
+/* 學校與縣市 */
+.county-tag{color:#45657a;background:#eef4f8;border-radius:5px;margin-left:8px;padding:1px 7px;font-size:12px;font-weight:700}
+.school-settings .section-hint{color:#617e90;margin:12px 0;font-size:14px}
+.school-settings .school-form{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto}
+.school-settings .form-select{background:#fff;border:1px solid #c5d9e5;border-radius:8px;min-height:42px;padding:9px 11px;font-size:14px}
+.school-county+.school-county{margin-top:10px}
+.school-county-name{color:#5c7181;margin-bottom:6px;font-size:12px;font-weight:700;display:block}
+.login-form select:disabled{color:#45657a;background:#f2f6f8;cursor:not-allowed}
+.login-form .field-hint{color:#2f7a5a;margin:0;font-size:12px;font-weight:500}
+@media (max-width:750px){.school-settings .school-form{grid-template-columns:1fr}}

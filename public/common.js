@@ -359,3 +359,19 @@ function downloadXlsx(filename, sheetName, headers, rows) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// ---------- 學校與縣市（由管理者設定，全站共用） ----------
+
+const COUNTIES = ['雲林縣', '嘉義縣'];
+let SCHOOLS = []; // [{ id, name, county }]，依縣市排序
+
+async function loadSchools() {
+  try {
+    SCHOOLS = await api('/api/schools');
+  } catch {
+    SCHOOLS = [];
+  }
+  return SCHOOLS;
+}
+
+const schoolCounty = (name) => SCHOOLS.find((s) => s.name === name)?.county || '';
