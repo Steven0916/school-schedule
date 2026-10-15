@@ -14,6 +14,7 @@ const state = {
   schoolName: '',
   username: '',
   records: [],
+  county: '全部', // 縣市篩選
   loading: true,
   loadError: '',
 };
@@ -206,9 +207,13 @@ function filesSection(o) {
 
 // ---------- 匯出 Excel ----------
 
+const recordCounties = (o) => (schoolCounty(o.createdBySchool) ? [schoolCounty(o.createdBySchool)] : []);
+const shownRecords = () => state.records.filter((o) => inCounty(recordCounties(o), state.county));
+
 function exportRecords() {
-  const rows = state.records.map((o) => [
+  const rows = shownRecords().map((o) => [
     o.date,
+    countyLabel(recordCounties(o)),
     o.createdBySchool || '管理者',
     o.subject,
     o.designer,
@@ -221,8 +226,9 @@ function exportRecords() {
     ...AI_MODES.map((m) => (o.modes.includes(m) ? '✓' : '')),
     o.fileCount,
   ]);
-  const headers = ['日期', '填報學校', '領域/科目', '設計者', '年級', '班級', '人數', '總節數', '每節分鐘', '單元名稱', ...AI_MODES, '附件數'];
-  downloadXlsx(`公開觀課紀錄_${todayTaipei()}.xlsx`, '公開觀課紀錄', headers, rows);
+  const headers = ['日期', '縣市', '填報學校', '領域/科目', '設計者', '年級', '班級', '人數', '總節數', '每節分鐘', '單元名稱', ...AI_MODES, '附件數'];
+  const suffix = state.county === '全部' ? '' : `_${state.county}`;
+  downloadXlsx(`公開觀課紀錄${suffix}_${todayTaipei()}.xlsx`, '公開觀課紀錄', headers, rows);
 }
 
 // ---------- 填報表單 ----------
@@ -428,7 +434,7 @@ function render() {
           h('button', { className: 'add-button', onClick: () => openRecordForm(null) }, icon('plus', 19), '填報公開觀課'),
           h(
             'button',
-            { className: 'empty-add', disabled: !state.records.length, onClick: exportRecords },
+            { className: 'empty-add', disabled: !shownRecords().length, onClick: exportRecords },
             icon('download', 16),
             '下載 Excel'
           )
@@ -447,7 +453,13 @@ function render() {
     banner.replaceChildren(h('span', {}, `學校端 · ${state.schoolName} · ${state.username}`), h('button', { onClick: logout }, '登出'));
   else banner.replaceChildren(h('span', {}, '公開瀏覽 · 設計者姓名已部分隱藏，登入後可看完整資料並填報。'));
 
-  const shown = state.records;
+  $('county-bar').replaceChildren(
+    countyFilterButtons(state.county, (c) => {
+      state.county = c;
+      render();
+    })
+  );
+  const shown = shownRecords();
   $('record-count').textContent = dash ? '' : `${shown.length} 筆`;
   const list = $('record-list');
   if (dash) list.replaceChildren(h('div', { className: 'empty-state' }, h('p', {}, '正在載入…')));
@@ -467,7 +479,7 @@ function render() {
         'div',
         { className: 'empty-state' },
         h('div', { className: 'empty-icon' }, icon('eye', 28)),
-        h('h3', {}, '尚無公開觀課資料'),
+        h('h3', {}, state.county === '全部' ? '尚無公開觀課資料' : `${state.county}尚無公開觀課資料`),
         h('p', {}, '填報後會顯示在這裡。'),
         canEdit() && h('button', { className: 'empty-add', onClick: () => openRecordForm(null) }, icon('plus', 17), '填報公開觀課')
       )
@@ -486,6 +498,8 @@ async function init() {
   } catch {
     state.role = 'viewer';
   }
+  await loadSchools();
+  state.county = initialCounty(state.role, state.schoolName);
   render();
   await load(true);
 }

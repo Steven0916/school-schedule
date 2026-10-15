@@ -490,3 +490,8 @@ body.has-side-nav .float-actions{left:250px}
 .login-form select:disabled{color:#45657a;background:#f2f6f8;cursor:not-allowed}
 .login-form .field-hint{color:#2f7a5a;margin:0;font-size:12px;font-weight:500}
 @media (max-width:750px){.school-settings .school-form{grid-template-columns:1fr}}
+
+/* 依縣市篩選 */
+.county-bar{margin-bottom:10px}
+.county-filter{gap:6px;display:flex;flex-wrap:wrap}
+.county-filter .filter{padding:7px 14px;font-size:13px}

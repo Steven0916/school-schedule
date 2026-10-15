@@ -375,3 +375,52 @@ async function loadSchools() {
 }
 
 const schoolCounty = (name) => SCHOOLS.find((s) => s.name === name)?.county || '';
+
+// ---------- 依縣市篩選（期程、已完成工作、觀課共用） ----------
+
+// 期程所屬縣市：參與學校、地點、建立學校對應到的縣市；都沒有則為「共同」（空陣列，兩縣都顯示）
+function eventCounties(e) {
+  const names = [...(e.schools || []), e.location, e.createdBySchool].filter(Boolean);
+  return COUNTIES.filter((c) => names.some((n) => schoolCounty(n) === c));
+}
+
+const countyLabel = (counties) => (counties.length ? counties.join('、') : '共同');
+// county 為「全部」或沒有縣市資訊時都顯示
+const inCounty = (counties, county) => county === '全部' || !counties.length || counties.includes(county);
+
+// 篩選選擇記在瀏覽器（跨頁面共用）；學校帳號第一次使用時預設為本校所在縣市
+function initialCounty(role, schoolName) {
+  try {
+    const saved = localStorage.getItem('countyFilter');
+    if (saved === '全部' || COUNTIES.includes(saved)) return saved;
+  } catch {}
+  return role === 'school' ? schoolCounty(schoolName) || '全部' : '全部';
+}
+
+function saveCounty(county) {
+  try {
+    localStorage.setItem('countyFilter', county);
+  } catch {}
+}
+
+function countyFilterButtons(current, onChange) {
+  return h(
+    'div',
+    { className: 'county-filter', role: 'group', 'aria-label': '依縣市篩選' },
+    ['全部', ...COUNTIES].map((c) =>
+      h(
+        'button',
+        {
+          type: 'button',
+          'aria-pressed': String(current === c),
+          className: current === c ? 'filter active' : 'filter',
+          onClick: () => {
+            saveCounty(c);
+            onChange(c);
+          },
+        },
+        c === '全部' ? '全部縣市' : c
+      )
+    )
+  );
+}

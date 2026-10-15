@@ -18,6 +18,7 @@ const state = {
   statusError: '',
   lastUpdated: '',
   filter: '全部',
+  county: '全部', // 縣市篩選（init 時依瀏覽器記錄或學校帳號決定）
   view: savedView(), // 'list' 清單 或 'calendar' 月曆
   calMonth: todayTaipei().slice(0, 7), // 月曆顯示的月份 YYYY-MM
   calDay: todayTaipei(), // 月曆中選取的日期
@@ -29,14 +30,18 @@ const state = {
 const isOwner = () => state.role === 'owner';
 const canEdit = () => state.role !== 'viewer';
 
+// 依縣市篩選後的期程（統計、清單、月曆、已完成都以此為準）
+const countyEvents = () => state.events.filter((e) => inCounty(eventCounties(e), state.county));
+
 function derived() {
-  const active = state.events.filter((e) => !e.completedAt && endOf(e) >= state.today);
-  const overdue = state.events
+  const events = countyEvents();
+  const active = events.filter((e) => !e.completedAt && endOf(e) >= state.today);
+  const overdue = events
     .filter((e) => !e.completedAt && endOf(e) < state.today)
     .sort((a, b) => endOf(b).localeCompare(endOf(a)));
   const pending = [...overdue, ...active];
   const filtered = pending.filter((e) => state.filter === '全部' || e.category === state.filter);
-  const completed = state.events
+  const completed = events
     .filter((e) => e.completedAt)
     .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
   return { pending, filtered, completed };
@@ -88,6 +93,7 @@ function openDetail(e) {
       item('主辦', e.owner || '未填寫'),
       item('地點', e.location || '未填寫'),
       item('參與學校', (e.schools || []).join('、') || '未勾選'),
+      item('縣市', countyLabel(eventCounties(e))),
       item('建立學校', e.createdBySchool || '管理者'),
       item('狀態', status),
       item('備註', e.notes || '無', 'event-detail-notes')
@@ -496,7 +502,7 @@ function calendarView() {
   const firstWeekday = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
   // 月曆顯示所有期程（含已完成），依目前類別篩選
-  const events = state.events.filter((e) => state.filter === '全部' || e.category === state.filter);
+  const events = countyEvents().filter((e) => state.filter === '全部' || e.category === state.filter);
   const on = (date) => events.filter((e) => e.startDate <= date && date <= endOf(e));
 
   const go = (delta) => {
@@ -595,6 +601,12 @@ function calendarView() {
 
 function render() {
   renderHeaderParts();
+  $('county-bar').replaceChildren(
+    countyFilterButtons(state.county, (c) => {
+      state.county = c;
+      render();
+    })
+  );
   if (PAGE === 'completed') renderCompleted();
   else renderHome();
 
@@ -672,6 +684,7 @@ function exportCompleted(rows) {
       e.endDate && e.endDate !== e.startDate ? `${e.startDate} ~ ${e.endDate}` : e.startDate,
       e.time || '',
       e.category,
+      countyLabel(eventCounties(e)),
       e.title,
       e.owner || '',
       e.location || '',
@@ -680,11 +693,11 @@ function exportCompleted(rows) {
       e.notes || '',
       e.completedAt ? when(e.completedAt) : '',
     ]);
-  const suffix = state.filter === '全部' ? '' : `_${state.filter}`;
+  const suffix = [state.county, state.filter].filter((x) => x !== '全部').map((x) => `_${x}`).join('');
   downloadXlsx(
     `已完成工作${suffix}_${todayTaipei()}.xlsx`,
     '已完成工作',
-    ['日期', '時間', '類別', '項目名稱', '主辦', '地點', '參與學校', '建立學校', '備註', '確認完成時間'],
+    ['日期', '時間', '類別', '縣市', '項目名稱', '主辦', '地點', '參與學校', '建立學校', '備註', '確認完成時間'],
     data
   );
 }
@@ -1313,6 +1326,7 @@ async function init() {
     state.role = 'viewer';
   }
   await loadSchools();
+  state.county = initialCounty(state.role, state.schoolName);
 
   if (isOwner() && PAGE === 'home') {
     mountSchoolAccess();
