@@ -2,6 +2,7 @@
 
 const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
 const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中'];
+const EVENT_SCHOOLS = ['石榴國中', '東榮國中', '永慶高中']; // 期程可勾選的參與學校（需與 worker.js 一致）
 
 // ---------- 狀態 ----------
 
@@ -86,6 +87,7 @@ function openDetail(e) {
       item('時間', e.time || '未填寫'),
       item('主辦', e.owner || '未填寫'),
       item('地點', e.location || '未填寫'),
+      item('參與學校', (e.schools || []).join('、') || '未勾選'),
       item('建立學校', e.createdBySchool || '管理者'),
       item('狀態', status),
       item('備註', e.notes || '無', 'event-detail-notes')
@@ -118,6 +120,15 @@ function openEventForm(existing, category = '會議', startDate = '') {
     LOCATIONS.map((l) => h('option', { value: l }, l))
   );
   const notes = h('textarea', { name: 'notes', maxlength: 500, rows: 3, placeholder: '補充準備事項等', value: v.notes || '' });
+  const schoolBoxes = EVENT_SCHOOLS.map((s) =>
+    h('input', { type: 'checkbox', value: s, checked: (v.schools || []).includes(s) })
+  );
+  const schoolField = h(
+    'fieldset',
+    { className: 'school-field' },
+    h('legend', {}, h('div', { className: 'field-label' }, '參與學校 ', h('small', {}, '選填，可複選'))),
+    h('div', { className: 'school-options' }, schoolBoxes.map((box) => h('label', { className: 'school-option' }, box, box.value)))
+  );
   const error = h('p', { className: 'form-error', role: 'alert', hidden: true });
   const cancel = h('button', { type: 'button', className: 'cancel-button', onClick: closeModal }, '取消');
   const submit = h('button', { className: 'submit-button' }, '儲存期程');
@@ -138,6 +149,7 @@ function openEventForm(existing, category = '會議', startDate = '') {
     h('div', { className: 'form-grid' }, field('開始日期', true, start), field('結束日期', false, end)),
     h('div', { className: 'form-grid' }, field('時間', false, time), field('主辦（負責人或單位）', false, owner)),
     field('地點', false, location),
+    schoolField,
     field('備註', false, notes),
     error,
     h('div', { className: 'form-actions' }, cancel, submit)
@@ -155,6 +167,7 @@ function openEventForm(existing, category = '會議', startDate = '') {
       location: location.value,
       owner: owner.value,
       notes: notes.value,
+      schools: schoolBoxes.filter((b) => b.checked).map((b) => b.value),
     };
     if (payload.endDate && payload.endDate < payload.startDate) {
       setError(error, '結束日期不能早於開始日期。');
@@ -314,7 +327,8 @@ function eventRow(e, kind) {
       'div',
       { className: 'event-facts' },
       h('span', {}, h('strong', {}, '主辦'), e.owner || '未填寫'),
-      h('span', {}, h('strong', {}, '地點'), e.location || '未填寫')
+      h('span', {}, h('strong', {}, '地點'), e.location || '未填寫'),
+      e.schools?.length > 0 && h('span', {}, h('strong', {}, '參與學校'), e.schools.join('、'))
     ),
     h(
       'button',

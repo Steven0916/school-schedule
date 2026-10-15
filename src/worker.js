@@ -2,6 +2,7 @@
 
 const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
 const LOCATIONS = ['線上會議', '石榴國中', '東榮國中', '永慶高中'];
+const EVENT_SCHOOLS = ['石榴國中', '東榮國中', '永慶高中']; // 期程可勾選的參與學校
 const GRADES = [7, 8, 9];
 const TEAM_ROLES = ['總召', '副總召', '計畫主持人', '協同主持人'];
 const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
@@ -130,6 +131,7 @@ function normalizeEvent(body) {
     location,
     owner: optionalString(body.owner, 80, '主辦'),
     notes: optionalString(body.notes, 500, '備註'),
+    schools: Array.isArray(body.schools) ? EVENT_SCHOOLS.filter((s) => body.schools.includes(s)) : [],
   };
 }
 
@@ -186,6 +188,7 @@ function toEvent(row, session) {
     location: row.location || '',
     owner: row.owner || '',
     notes: row.notes || '',
+    schools: JSON.parse(row.schools || '[]'),
     createdBySchool: row.created_by_school || null,
     completedAt: row.completed_at || null,
     deletedAt: row.deleted_at || null,
@@ -558,11 +561,11 @@ route('POST', '/api/events', async (ctx) => {
   const school = ctx.session.role === 'school' ? ctx.session.member : null;
   const row = await ctx.db
     .prepare(
-      `INSERT INTO events (title, category, start_date, end_date, time, location, owner, notes,
+      `INSERT INTO events (title, category, start_date, end_date, time, location, owner, notes, schools,
          created_by_school, created_by_member_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
     )
-    .bind(e.title, e.category, e.startDate, e.endDate, e.time, e.location, e.owner, e.notes,
+    .bind(e.title, e.category, e.startDate, e.endDate, e.time, e.location, e.owner, e.notes, JSON.stringify(e.schools),
       school?.school_name ?? null, school?.id ?? null, new Date().toISOString())
     .first();
   await audit(ctx, '新增期程', `${e.category}｜${e.title}（${e.startDate}）`);
@@ -576,10 +579,10 @@ route('PUT', '/api/events/:id', async (ctx) => {
   const row = await ctx.db
     .prepare(
       `UPDATE events SET title = ?, category = ?, start_date = ?, end_date = ?, time = ?, location = ?,
-         owner = ?, notes = ?, updated_at = ? WHERE id = ? RETURNING *`
+         owner = ?, notes = ?, schools = ?, updated_at = ? WHERE id = ? RETURNING *`
     )
     .bind(e.title, e.category, e.startDate, e.endDate, e.time, e.location, e.owner, e.notes,
-      new Date().toISOString(), before.id)
+      JSON.stringify(e.schools), new Date().toISOString(), before.id)
     .first();
   const moved = before.start_date !== e.startDate ? `，日期 ${before.start_date} → ${e.startDate}` : '';
   await audit(ctx, '編輯期程', `${e.title}${moved}`);
@@ -639,6 +642,7 @@ function observationEvent(o, schoolName) {
     date: o.date,
     location: LOCATIONS.includes(schoolName) ? schoolName : '',
     owner: schoolName || '',
+    schools: EVENT_SCHOOLS.includes(schoolName) ? [schoolName] : [],
     notes: `${GRADE_LABELS[o.grade] || ''} ${o.className} 班 · 共 ${o.periods} 節，每節 ${o.minutes} 分鐘\n（由公開觀課填報自動建立）`,
   };
 }
@@ -647,12 +651,12 @@ function insertObservationEvent(ctx, observationId, o, school) {
   const e = observationEvent(o, school?.school_name);
   return ctx.db
     .prepare(
-      `INSERT INTO events (title, category, start_date, end_date, time, location, owner, notes,
+      `INSERT INTO events (title, category, start_date, end_date, time, location, owner, notes, schools,
          created_by_school, created_by_member_id, created_at, observation_id)
-       VALUES (?, '觀課計畫', ?, '', '', ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, '觀課計畫', ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(e.title, e.date, e.location, e.owner, e.notes, school?.school_name ?? null, school?.id ?? null,
-      new Date().toISOString(), observationId);
+    .bind(e.title, e.date, e.location, e.owner, e.notes, JSON.stringify(e.schools), school?.school_name ?? null,
+      school?.id ?? null, new Date().toISOString(), observationId);
 }
 
 route('GET', '/api/observations', async (ctx) => {

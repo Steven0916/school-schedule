@@ -461,3 +461,13 @@ body.has-side-nav .float-actions{left:250px}
 .county-empty{color:#8195a1;margin:0;padding:10px 4px;font-size:14px}
 @media (max-width:600px){.county-columns{grid-template-columns:1fr}}
 .county-columns .county-group{margin-top:0!important}
+
+/* 期程：參與學校勾選 */
+.school-field{border:0;min-width:0;margin:0;padding:0}
+.school-field legend{color:#2a4659;margin-bottom:7px;padding:0;font-size:14px;font-weight:700}
+.school-field legend small{color:#8195a1;margin-left:2px;font-size:12px;font-weight:400}
+.school-options{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;display:grid}
+.event-form .school-option{color:#1e3c51;cursor:pointer;background:#fff;border:1px solid #cbdce5;border-radius:8px;flex-direction:row;align-items:center;gap:8px;padding:10px 12px;font-size:15px}
+.event-form .school-option:has(input:checked){background:#e9f0ff;border-color:#9db4e4}
+.event-form .school-option input{accent-color:#123e63;flex:none;width:17px;min-height:0;height:17px;margin:0;padding:0}
+@media (max-width:600px){.school-options{grid-template-columns:1fr}}
