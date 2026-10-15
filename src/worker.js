@@ -3,7 +3,7 @@
 const CATEGORIES = ['會議', '工作', '觀課計畫', '重要行事'];
 // 學校清單存在資料表 schools（管理者在網站上維護），地點另外多一個「線上會議」
 const ONLINE_LOCATION = '線上會議';
-const GRADES = [7, 8, 9];
+const GRADES = [7, 8, 9, 10, 11, 12]; // 國中七～九年級、高中部十～十二年級
 const TEAM_ROLES = ['總召', '副總召', '計畫主持人', '協同主持人'];
 const TEAM_TITLES = ['校長', '主任', '組長', '教師', '職員'];
 const TEAM_COUNTIES = ['雲林縣', '嘉義縣'];
@@ -160,7 +160,7 @@ function normalizeObservation(body) {
     date: body.date,
     subject: requiredString(body.subject, 40, '領域/科目'),
     designer: requiredString(body.designer, 80, '設計者'),
-    grade: GRADES.includes(Number(body.grade)) ? Number(body.grade) : invalid('請選擇年級（七、八、九年級）。'),
+    grade: GRADES.includes(Number(body.grade)) ? Number(body.grade) : invalid('請選擇年級（七～十二年級）。'),
     className: requiredString(body.className, 20, '班級'),
     students: intInRange(body.students, 1, 200, '人數'),
     periods: intInRange(body.periods, 1, 30, '總節數'),
@@ -636,7 +636,7 @@ async function findObservation(ctx) {
 const observationLabel = (o) => `${o.subject}｜${o.unit}（${o.date}）`;
 
 // 觀課 → 期程清單的「觀課計畫」。期程是公開的，所以不放設計者姓名。
-const GRADE_LABELS = { 7: '七年級', 8: '八年級', 9: '九年級' };
+const GRADE_LABELS = { 7: '七年級', 8: '八年級', 9: '九年級', 10: '十年級', 11: '十一年級', 12: '十二年級' };
 function observationEvent(o, schoolName, names = []) {
   return {
     title: `公開觀課｜${o.subject}｜${o.unit}`.slice(0, 120),

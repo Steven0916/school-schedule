@@ -3,7 +3,7 @@
 // 公開觀課填報頁面（共用工具在 common.js）
 
 const AI_MODES = ['AI備課', 'AI教學', 'AI評量', 'AI協作', 'AI創作', 'AI探究'];
-const GRADES = { 7: '七年級', 8: '八年級', 9: '九年級' };
+const GRADES = { 7: '七年級', 8: '八年級', 9: '九年級', 10: '十年級', 11: '十一年級', 12: '十二年級' }; // 國中七～九、高中部十～十二
 const gradeLabel = (g) => GRADES[g] || `${g} 年級`;
 const classLabel = (o) => `${gradeLabel(o.grade)} ${o.className} 班 · ${o.students} 人`;
 const periodLabel = (o) => `共 ${o.periods} 節，每節 ${o.minutes} 分鐘`;

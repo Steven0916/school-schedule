@@ -30,7 +30,7 @@ const created = await req('/api/observations', { method: 'POST', body: valid, co
 ok(created.status === 200 && created.data.modes.join() === 'AI備課,AI評量' && created.data.canModify, 'create ' + JSON.stringify(created.data));
 
 const bad = [
-  [{ date: '2026-02-30' }, '日期'], [{ modes: [] }, '模式'], [{ grade: 13 }, '年級'], [{ grade: 6 }, '年級'], [{ students: 0 }, '人數'],
+  [{ date: '2026-02-30' }, '日期'], [{ modes: [] }, '模式'], [{ grade: 13 }, '年級'], [{ grade: 6 }, '年級'], [{ grade: 9.5 }, '年級'], [{ students: 0 }, '人數'],
   [{ periods: 1.5 }, '總節數'], [{ minutes: 'x' }, '每節'], [{ subject: '  ' }, '領域'], [{ unit: '' }, '單元'], [{ className: '' }, '班級'],
 ];
 for (const [patch, word] of bad) {
