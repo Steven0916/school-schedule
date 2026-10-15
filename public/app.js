@@ -590,17 +590,84 @@ function render() {
 function renderCompleted() {
   const { completed } = derived();
   const dash = state.loading;
-  $('completed-count').textContent = dash ? '' : `${completed.length} 筆`;
+  const shown = completed.filter((e) => state.filter === '全部' || e.category === state.filter);
+  $('completed-count').textContent = dash ? '' : `${shown.length} 筆`;
   $('last-updated').textContent = state.lastUpdated ? ` · ${state.lastUpdated}` : '';
+
+  // 類別篩選（附各類別完成數）
+  $('filters').replaceChildren(
+    ...['全部', ...CATEGORIES].map((c) =>
+      h(
+        'button',
+        {
+          'aria-pressed': String(state.filter === c),
+          className: state.filter === c ? 'filter active' : 'filter',
+          onClick: () => {
+            state.filter = c;
+            render();
+          },
+        },
+        c === '全部' ? icon('layout-grid', 16) : icon(CATEGORY_ICON[c], 15),
+        c,
+        !dash && h('span', { className: 'filter-count' }, String(c === '全部' ? completed.length : completed.filter((e) => e.category === c).length))
+      )
+    )
+  );
+
+  $('completed-actions').replaceChildren(
+    canEdit()
+      ? h('button', { className: 'empty-add', disabled: dash || !shown.length, onClick: () => exportCompleted(shown) }, icon('download', 16), '下載 Excel')
+      : ''
+  );
+
   const compact = (text) => h('div', { className: 'empty-state compact' }, h('p', {}, text));
-  $('completed-list').replaceChildren(
-    ...(dash
-      ? [compact('正在載入…')]
-      : state.loadError
-        ? [compact('暫時無法載入。')]
-        : completed.length
-          ? completed.map((e) => eventRow(e, 'completed'))
-          : [compact('尚無已確認完成的項目。')])
+  let body;
+  if (dash) body = [compact('正在載入…')];
+  else if (state.loadError) body = [compact('暫時無法載入。')];
+  else if (!shown.length) body = [compact(state.filter === '全部' ? '尚無已確認完成的項目。' : `尚無已完成的「${state.filter}」。`)];
+  else {
+    // 依活動日期的月份分組，新的月份在前
+    const sorted = [...shown].sort((a, b) => b.startDate.localeCompare(a.startDate) || b.id - a.id);
+    const months = new Map();
+    for (const e of sorted) {
+      const ym = e.startDate.slice(0, 7);
+      if (!months.has(ym)) months.set(ym, []);
+      months.get(ym).push(e);
+    }
+    body = [...months].flatMap(([ym, items]) => {
+      const [y, m] = ym.split('-').map(Number);
+      return [
+        h('h3', { className: 'month-header' }, `${y} 年 ${m} 月`, h('span', {}, `${items.length} 筆`)),
+        ...items.map((e) => eventRow(e, 'completed')),
+      ];
+    });
+  }
+  $('completed-list').replaceChildren(...body);
+}
+
+function exportCompleted(rows) {
+  const when = (iso) =>
+    new Date(iso).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const data = [...rows]
+    .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.id - b.id)
+    .map((e) => [
+      e.endDate && e.endDate !== e.startDate ? `${e.startDate} ~ ${e.endDate}` : e.startDate,
+      e.time || '',
+      e.category,
+      e.title,
+      e.owner || '',
+      e.location || '',
+      (e.schools || []).join('、'),
+      e.createdBySchool || '管理者',
+      e.notes || '',
+      e.completedAt ? when(e.completedAt) : '',
+    ]);
+  const suffix = state.filter === '全部' ? '' : `_${state.filter}`;
+  downloadXlsx(
+    `已完成工作${suffix}_${todayTaipei()}.xlsx`,
+    '已完成工作',
+    ['日期', '時間', '類別', '項目名稱', '主辦', '地點', '參與學校', '建立學校', '備註', '確認完成時間'],
+    data
   );
 }
 

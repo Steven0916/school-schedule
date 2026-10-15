@@ -471,3 +471,11 @@ body.has-side-nav .float-actions{left:250px}
 .event-form .school-option:has(input:checked){background:#e9f0ff;border-color:#9db4e4}
 .event-form .school-option input{accent-color:#123e63;flex:none;width:17px;min-height:0;height:17px;margin:0;padding:0}
 @media (max-width:600px){.school-options{grid-template-columns:1fr}}
+
+/* 已完成工作頁：月份分組、篩選數字 */
+.month-header{color:#1e4256;background:#f2f7f4;border-bottom:1px solid #dcebe3;justify-content:space-between;align-items:baseline;margin:0;padding:10px 24px;font-size:15px;display:flex}
+.month-header span{color:#5f7d6e;font-size:13px;font-weight:500}
+.completed-list .month-header:not(:first-child){border-top:1px solid #dcebe3}
+.filter-count{color:inherit;opacity:.7;background:#0000000d;border-radius:999px;margin-left:2px;padding:0 7px;font-size:12px}
+.filter.active .filter-count{background:#ffffff26;opacity:.9}
+@media (max-width:600px){.month-header{padding:9px 12px}}

@@ -28,7 +28,7 @@
         <div>
           <p class="eyebrow">PROGRESS / 工作進度</p>
           <h1>已完成工作</h1>
-          <p class="intro-copy">管理者確認完成的期程會集中在這裡，依完成時間由新到舊排列。</p>
+          <p class="intro-copy">管理者確認完成的期程會集中在這裡，依活動月份分組，可依類別篩選並下載 Excel。</p>
         </div>
         <div id="intro-actions"></div>
       </section>
@@ -42,6 +42,10 @@
             <h2 id="completed-title">已確認完成 <span id="completed-count"></span></h2>
           </div>
           <button class="refresh-button" id="refresh-button" aria-label="更新清單">更新清單<span id="last-updated"></span></button>
+        </div>
+        <div class="filter-bar">
+          <div class="filters" id="filters" role="group" aria-label="依類別篩選"></div>
+          <div class="view-toggle" id="completed-actions"></div>
         </div>
         <div class="list completed-list" id="completed-list" aria-live="polite"></div>
       </section>
